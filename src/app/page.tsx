@@ -1,65 +1,67 @@
-import Image from "next/image";
-
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+    <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ fontSize: '48px', marginBottom: '20px' }}>
+        Automated Idea Expansion
+      </h1>
+      <p style={{ fontSize: '20px', color: '#666', marginBottom: '30px' }}>
+        Transform your half-formed ideas into polished content automatically
+      </p>
+
+      <div style={{ padding: '20px', backgroundColor: '#f0fdf4', border: '2px solid #86efac', borderRadius: '8px', marginBottom: '30px' }}>
+        <h3 style={{ margin: '0 0 10px 0', color: '#166534' }}>✅ Phase 4 Complete - Multi-Agent AI Pipeline Live!</h3>
+        <p style={{ margin: 0, color: '#15803d' }}>
+          The AI agent system is working! Judge → Router → Creator agents automatically expand your ideas into blog posts, social threads, code projects, or AI-generated images.
+        </p>
+      </div>
+
+      <div style={{ marginTop: '40px' }}>
+        <h2 style={{ fontSize: '24px', marginBottom: '15px' }}>🚀 Try It Out:</h2>
+        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
           <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/ideas"
+            style={{
+              display: 'inline-block',
+              padding: '15px 30px',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              backgroundColor: '#0070f3',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '8px',
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
+            💡 Manage Ideas
           </a>
           <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/outputs"
+            style={{
+              display: 'inline-block',
+              padding: '15px 30px',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              backgroundColor: '#10b981',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '8px',
+            }}
           >
-            Documentation
+            ✨ View Outputs
           </a>
         </div>
-      </main>
+      </div>
+
+      <div style={{ marginTop: '60px', paddingTop: '30px', borderTop: '1px solid #ddd' }}>
+        <h2 style={{ fontSize: '24px', marginBottom: '15px' }}>📋 Roadmap:</h2>
+        <ul style={{ lineHeight: '2' }}>
+          <li><strong>Phase 1:</strong> Foundation ✅ Done!</li>
+          <li><strong>Phase 2:</strong> Ideas Management ✅ Done!</li>
+          <li><strong>Phase 4:</strong> Multi-Agent AI System ✅ Done!</li>
+          <li><strong>Phase 5 (Current):</strong> Outputs Viewer & Real-time Progress</li>
+          <li><strong>Phase 6:</strong> Publishing to External Platforms (GitHub, Mastodon)</li>
+          <li><strong>Phase 7:</strong> User Authentication (Clerk)</li>
+        </ul>
+      </div>
     </div>
   );
 }
