@@ -252,15 +252,27 @@ function parseReview(text: string): CodeReview {
       throw new Error('Missing or invalid required fields in review');
     }
 
-    // Validate recommendation
-    if (!['approve', 'revise', 'regenerate'].includes(parsed.recommendation)) {
-      throw new Error(`Invalid recommendation: ${parsed.recommendation}`);
+    // Normalize recommendation (handle variations from Gemini)
+    let normalizedRecommendation: 'approve' | 'revise' | 'regenerate';
+    const rec = parsed.recommendation?.toLowerCase() || '';
+
+    if (rec.includes('approve')) {
+      // "approve", "approve_with_fixes", "approved" → all become "approve"
+      normalizedRecommendation = 'approve';
+    } else if (rec.includes('revise') || rec.includes('fix')) {
+      normalizedRecommendation = 'revise';
+    } else if (rec.includes('regenerate') || rec.includes('rewrite')) {
+      normalizedRecommendation = 'regenerate';
+    } else {
+      // Default to approve if unrecognized
+      console.warn(`Unrecognized recommendation: ${parsed.recommendation}, defaulting to 'approve'`);
+      normalizedRecommendation = 'approve';
     }
 
     return {
       overallScore: parsed.overallScore,
       hasErrors: parsed.hasErrors,
-      recommendation: parsed.recommendation,
+      recommendation: normalizedRecommendation,
       strengths: parsed.strengths || [],
       weaknesses: parsed.weaknesses || [],
       securityConcerns: parsed.securityConcerns || [],
