@@ -78,6 +78,27 @@ export default function OutputViewerPage({ params }: { params: Promise<{ id: str
     );
   }
 
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this output?')) return;
+
+    try {
+      const response = await fetch(`/api/outputs/${resolvedParams.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Redirect back to outputs list
+        window.location.href = '/outputs';
+      } else {
+        alert(data.error || 'Failed to delete output');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete output');
+    }
+  };
+
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
       {/* Header */}
@@ -95,10 +116,26 @@ export default function OutputViewerPage({ params }: { params: Promise<{ id: str
         >
           ← Back
         </Link>
-        <span style={{ fontSize: '14px', color: '#999' }}>
-          Created {new Date(output.created_at).toLocaleDateString()} at{' '}
-          {new Date(output.created_at).toLocaleTimeString()}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <span style={{ fontSize: '14px', color: '#999' }}>
+            Created {new Date(output.created_at).toLocaleDateString()} at{' '}
+            {new Date(output.created_at).toLocaleTimeString()}
+          </span>
+          <button
+            onClick={handleDelete}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              backgroundColor: '#fee',
+              color: '#c00',
+              border: '1px solid #fcc',
+              borderRadius: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            🗑️ Delete
+          </button>
+        </div>
       </div>
 
       {/* Format-specific viewer */}

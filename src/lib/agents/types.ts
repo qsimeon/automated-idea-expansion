@@ -18,70 +18,50 @@ export const AgentState = Annotation.Root({
   userId: Annotation<string>(),
 
   // All pending ideas to evaluate
-  allIdeas: Annotation<Idea[]>({
-    default: () => [],
-  }),
+  allIdeas: Annotation<Idea[]>,
 
   // For manual trigger: specific idea to expand
-  specificIdeaId: Annotation<string | null>({
-    default: () => null,
-  }),
+  specificIdeaId: Annotation<string | null>,
 
   // ============================================================
   // JUDGE AGENT OUTPUTS
   // ============================================================
 
   // The idea selected for expansion
-  selectedIdea: Annotation<Idea | null>({
-    default: () => null,
-  }),
+  selectedIdea: Annotation<Idea | null>,
 
   // Why this idea was chosen (for transparency)
-  judgeReasoning: Annotation<string>({
-    default: () => '',
-  }),
+  judgeReasoning: Annotation<string>,
 
   // Score 0-100 (how good is this idea)
-  judgeScore: Annotation<number>({
-    default: () => 0,
-  }),
+  judgeScore: Annotation<number>,
 
   // ============================================================
   // ROUTER AGENT OUTPUTS
   // ============================================================
 
   // Output format: blog_post | twitter_thread | github_repo | image
-  chosenFormat: Annotation<'blog_post' | 'twitter_thread' | 'github_repo' | 'image' | null>({
-    default: () => null,
-  }),
+  chosenFormat: Annotation<'blog_post' | 'twitter_thread' | 'github_repo' | 'image' | null>,
 
   // Why this format was chosen
-  formatReasoning: Annotation<string>({
-    default: () => '',
-  }),
+  formatReasoning: Annotation<string>,
 
   // ============================================================
   // CREATOR AGENT OUTPUTS
   // ============================================================
 
   // The generated content (structure varies by format)
-  generatedContent: Annotation<any>({
-    default: () => null,
-  }),
+  generatedContent: Annotation<any>,
 
   // ============================================================
   // PUBLISHER OUTPUTS
   // ============================================================
 
   // Where the content was published (URL)
-  publishedUrl: Annotation<string | null>({
-    default: () => null,
-  }),
+  publishedUrl: Annotation<string | null>,
 
   // Platform-specific metadata
-  publishMetadata: Annotation<any>({
-    default: () => null,
-  }),
+  publishMetadata: Annotation<any>,
 
   // ============================================================
   // TRACKING & ERRORS

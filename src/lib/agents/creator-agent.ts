@@ -1,7 +1,7 @@
 import type { AgentStateType } from './types';
 import { createBlogPost } from './creators/blog-creator';
 import { createMastodonThread } from './creators/mastodon-creator';
-import { createCodeProject } from './creators/code-creator';
+import { createCodeProjectV2 } from './creators/code/code-creator-v2'; // Multi-stage code creator
 import { createAIImage } from './creators/image-creator';
 
 /**
@@ -65,8 +65,8 @@ export async function creatorAgent(
         };
 
       case 'github_repo':
-        console.log('Creating code project...');
-        const codeResult = await createCodeProject(selectedIdea);
+        console.log('Creating code project with multi-stage pipeline...');
+        const codeResult = await createCodeProjectV2(selectedIdea);
         return {
           generatedContent: {
             format: 'github_repo',

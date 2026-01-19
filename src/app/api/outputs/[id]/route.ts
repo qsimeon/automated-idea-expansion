@@ -50,3 +50,52 @@ export async function GET(
     );
   }
 }
+
+/**
+ * DELETE /api/outputs/[id]
+ * Delete a specific output
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    console.log(`🗑️  Deleting output: ${id}`);
+
+    // Delete the output
+    const { error } = await supabaseAdmin
+      .from('outputs')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', TEST_USER_ID);
+
+    if (error) {
+      console.error('Error deleting output:', error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to delete output',
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log(`✅ Output deleted: ${id}`);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Output deleted successfully',
+    });
+  } catch (error: any) {
+    console.error('Failed to delete output:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message || 'Failed to delete output',
+      },
+      { status: 500 }
+    );
+  }
+}

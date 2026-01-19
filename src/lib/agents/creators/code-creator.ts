@@ -196,7 +196,7 @@ function parseCodeProject(content: string): CodeProject {
   });
 
   // Extract README content for convenience
-  const readmeFile = files.find((f) => f.path.toLowerCase() === 'readme.md');
+  const readmeFile = files.find((f: { path: string; content: string }) => f.path.toLowerCase() === 'readme.md');
   const readme = readmeFile ? readmeFile.content : '';
 
   return {

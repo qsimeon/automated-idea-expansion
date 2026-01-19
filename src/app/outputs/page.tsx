@@ -165,24 +165,14 @@ export default function OutputsPage() {
       ) : (
         <div style={{ display: 'grid', gap: '20px' }}>
           {filteredOutputs.map((output) => (
-            <Link
+            <div
               key={output.id}
-              href={`/outputs/${output.id}`}
               style={{
                 display: 'block',
                 padding: '20px',
                 border: '1px solid #ddd',
                 borderRadius: '8px',
                 backgroundColor: 'white',
-                textDecoration: 'none',
-                color: 'inherit',
-                transition: 'box-shadow 0.2s',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
@@ -196,20 +186,57 @@ export default function OutputsPage() {
                     {new Date(output.created_at).toLocaleDateString()}
                   </p>
                 </div>
-                <span
-                  style={{
-                    padding: '6px 12px',
-                    backgroundColor: '#f0f9ff',
-                    color: '#0070f3',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  View →
-                </span>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <Link
+                    href={`/outputs/${output.id}`}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#f0f9ff',
+                      color: '#0070f3',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    View →
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Are you sure you want to delete this output?')) return;
+
+                      try {
+                        const response = await fetch(`/api/outputs/${output.id}`, {
+                          method: 'DELETE',
+                        });
+
+                        const data = await response.json();
+
+                        if (data.success) {
+                          // Refresh the page to show updated list
+                          window.location.reload();
+                        } else {
+                          alert(data.error || 'Failed to delete output');
+                        }
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to delete output');
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '14px',
+                      backgroundColor: '#fee',
+                      color: '#c00',
+                      border: '1px solid #fcc',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
