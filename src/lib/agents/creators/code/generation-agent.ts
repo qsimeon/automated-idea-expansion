@@ -1,6 +1,7 @@
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeFile } from './types';
+import { generateNotebookV2 } from './notebook-generator-v2';
 
 /**
  * GENERATION AGENT
@@ -37,7 +38,7 @@ export async function generateCode(
   // Route to specialized generator based on output type
   switch (plan.outputType) {
     case 'notebook':
-      return await generateNotebook(plan, idea);
+      return await generateNotebookV2(plan, idea); // Use new clean implementation
     case 'cli-app':
       return await generateCLIApp(plan, idea);
     case 'web-app':
