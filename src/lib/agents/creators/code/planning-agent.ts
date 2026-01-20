@@ -32,8 +32,8 @@ export async function planCodeProject(idea: {
   console.log(`🎯 Planning code project for: "${idea.title}"`);
 
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
-    temperature: 0.3, // Lower temp for more consistent planning
+    modelName: 'gpt-5-nano-2025-08-07',
+    // Note: GPT-5 nano only supports default temperature (1)
   });
 
   const prompt = buildPlanningPrompt(idea);
@@ -116,6 +116,27 @@ DECISION GUIDELINES:
 - JavaScript/TypeScript for anything web-related
 - Keep it simple unless complexity is clearly needed
 
+6. **IMPLEMENTATION PLANNING** - Create a detailed roadmap:
+   - List 3-7 specific implementation steps in order
+   - Identify 2-4 critical files that must work correctly
+   - Define test criteria to validate the implementation
+
+7. **QUALITY RUBRIC** - Define evaluation criteria across four dimensions:
+
+   **Correctness (40%)**: What makes the code functionally correct?
+   Examples: "All functions handle edge cases", "Input validation implemented"
+
+   **Security (30%)**: What security measures must be in place?
+   Examples: "No hardcoded secrets", "Input sanitization for user data"
+
+   **Code Quality (20%)**: What quality standards apply?
+   Examples: "Consistent naming conventions", "Functions under 50 lines", "Adequate comments"
+
+   **Completeness (10%)**: What features/documentation must be included?
+   Examples: "README with setup instructions", "Example usage included", "Error messages are clear"
+
+   For each dimension, list 2-4 specific, measurable criteria.
+
 Respond with ONLY valid JSON (no markdown, no code blocks):
 {
   "outputType": "<notebook|cli-app|web-app|library|demo-script>",
@@ -123,7 +144,46 @@ Respond with ONLY valid JSON (no markdown, no code blocks):
   "framework": "<framework name or null>",
   "architecture": "<simple|modular|full-stack>",
   "reasoning": "<2-3 sentences explaining your decisions>",
-  "estimatedComplexity": "<low|medium|high>"
+  "estimatedComplexity": "<low|medium|high>",
+  "implementationSteps": [
+    "Set up project structure with main file and dependencies",
+    "Implement core functionality with input validation",
+    "Add error handling and edge case coverage",
+    "Create comprehensive README with examples"
+  ],
+  "qualityRubric": {
+    "correctness": {
+      "weight": 0.4,
+      "criteria": [
+        "Code runs without syntax errors",
+        "All functions handle edge cases",
+        "Input validation implemented"
+      ]
+    },
+    "security": {
+      "weight": 0.3,
+      "criteria": [
+        "No hardcoded secrets or credentials",
+        "Input sanitization for user data"
+      ]
+    },
+    "codeQuality": {
+      "weight": 0.2,
+      "criteria": [
+        "Consistent naming conventions",
+        "Adequate comments explaining logic"
+      ]
+    },
+    "completeness": {
+      "weight": 0.1,
+      "criteria": [
+        "README with setup and usage instructions",
+        "Example usage included"
+      ]
+    }
+  },
+  "criticalFiles": ["main.py", "README.md"],
+  "testCriteria": ["Run code without errors", "Test with sample inputs", "Verify all features work"]
 }`;
 }
 
@@ -164,6 +224,26 @@ function parseCodePlan(content: string): CodePlan {
       throw new Error(`Invalid estimatedComplexity: ${parsed.estimatedComplexity}`);
     }
 
+    // Add defaults for new optional fields (backward compatibility)
+    if (!parsed.implementationSteps || !Array.isArray(parsed.implementationSteps)) {
+      parsed.implementationSteps = [];
+    }
+    if (!parsed.criticalFiles || !Array.isArray(parsed.criticalFiles)) {
+      parsed.criticalFiles = [];
+    }
+    if (!parsed.testCriteria || !Array.isArray(parsed.testCriteria)) {
+      parsed.testCriteria = [];
+    }
+    if (!parsed.qualityRubric) {
+      // Default rubric if not provided
+      parsed.qualityRubric = {
+        correctness: { weight: 0.4, criteria: ["Code runs without errors"] },
+        security: { weight: 0.3, criteria: ["No security issues"] },
+        codeQuality: { weight: 0.2, criteria: ["Code is readable"] },
+        completeness: { weight: 0.1, criteria: ["All required files present"] },
+      };
+    }
+
     return {
       outputType: parsed.outputType,
       language: parsed.language,
@@ -171,6 +251,11 @@ function parseCodePlan(content: string): CodePlan {
       architecture: parsed.architecture,
       reasoning: parsed.reasoning,
       estimatedComplexity: parsed.estimatedComplexity,
+      // New fields (with defaults applied above)
+      implementationSteps: parsed.implementationSteps,
+      qualityRubric: parsed.qualityRubric,
+      criticalFiles: parsed.criticalFiles,
+      testCriteria: parsed.testCriteria,
     };
   } catch (error) {
     console.error('Failed to parse plan:', content);

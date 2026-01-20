@@ -1,6 +1,7 @@
 import { planCodeProject } from './planning-agent';
 import { generateCode } from './generation-agent';
 import { reviewCode } from './critic-agent';
+import { fixCode } from './fixer-agent';
 import type { GeneratedCode, CodeCreationState } from './types';
 
 /**
@@ -55,7 +56,7 @@ export async function createCodeProjectV2(idea: {
   try {
     // STAGE 1: PLANNING
     console.log('📋 STAGE 1: Planning');
-    console.log('   Agent: Planning Agent (GPT-4o-mini)');
+    console.log('   Agent: Planning Agent');
     console.log('   Task: Decide output type, language, architecture\n');
 
     const planResult = await planCodeProject(idea);
@@ -67,7 +68,7 @@ export async function createCodeProjectV2(idea: {
 
     // STAGE 2: GENERATION
     console.log('🛠️  STAGE 2: Code Generation');
-    console.log('   Agent: Generation Agent (GPT-4o-mini)');
+    console.log('   Agent: Generation Agent');
     console.log('   Task: Create code files based on plan\n');
 
     const codeResult = await generateCode(state.plan, idea);
@@ -80,7 +81,7 @@ export async function createCodeProjectV2(idea: {
 
     // STAGE 3: CODE REVIEW
     console.log('🔍 STAGE 3: Code Review');
-    console.log('   Agent: Critic Agent (Gemini Flash 2.0)');
+    console.log('   Agent: Critic Agent');
     console.log('   Task: Review for quality, security, correctness\n');
 
     const reviewResult = await reviewCode(state.code, state.plan);
@@ -110,19 +111,92 @@ export async function createCodeProjectV2(idea: {
       console.log('');
     }
 
-    // STAGE 4: DECISION (Future: Add fixer loop here)
-    /*
-     * Future enhancement:
-     * if (state.review.recommendation === 'revise' && state.attempts < state.maxAttempts) {
-     *   console.log('🔧 STAGE 4: Auto-Fix');
-     *   // Run fixer agent to address issues
-     *   // Re-run review
-     *   // Loop back if needed
-     * }
-     */
+    // STAGE 4: QUALITY GATE & ITERATION LOOP
+    const QUALITY_THRESHOLD = 75; // Minimum acceptable score
+    const POOR_QUALITY_THRESHOLD = 60; // Below this triggers regeneration
+    const MAX_ITERATIONS = 5; // Hard limit
 
-    // For now, we accept the code regardless of review
-    // (Most AI-generated code has minor issues but is still functional)
+    while (state.attempts < MAX_ITERATIONS) {
+      // Quality gate: Check if code meets threshold
+      if (
+        state.review.overallScore >= QUALITY_THRESHOLD &&
+        state.review.recommendation === 'approve'
+      ) {
+        console.log(`✅ Code quality acceptable (${state.review.overallScore}/100)\n`);
+        break;
+      }
+
+      // Decide: Regenerate all vs fix specific files
+      let shouldRegenerate = false;
+      if (state.review.overallScore < POOR_QUALITY_THRESHOLD && state.attempts < 2) {
+        shouldRegenerate = true;
+        console.log(`🔄 Score too low (${state.review.overallScore}), will regenerate all\n`);
+      } else if (state.review.recommendation === 'regenerate' && state.attempts < 2) {
+        shouldRegenerate = true;
+        console.log(`🔄 Critic recommends full regeneration\n`);
+      }
+
+      state.attempts++;
+
+      if (shouldRegenerate) {
+        // Full regeneration
+        console.log(`🛠️  STAGE 4a: Full Regeneration (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
+
+        const regenResult = await generateCode(state.plan!, idea);
+        state.code = regenResult.code;
+        totalTokens += regenResult.tokensUsed;
+
+        console.log(`   ✅ Regenerated ${state.code.files.length} files`);
+        console.log(`   💰 Tokens: ${regenResult.tokensUsed}\n`);
+      } else {
+        // Targeted fixes
+        console.log(`🔧 STAGE 4b: Targeted Fixes (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
+
+        const fixResult = await fixCode(state.code!, state.review, state.plan!);
+        state.code = fixResult.code;
+        totalTokens += fixResult.tokensUsed;
+
+        console.log(`   ✅ Fixed files: ${fixResult.filesFixed.join(', ')}`);
+        console.log(`   💰 Tokens: ${fixResult.tokensUsed}\n`);
+      }
+
+      // Re-review after changes
+      console.log(`🔍 STAGE 5: Re-review (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
+
+      const prevScore = state.review.overallScore;
+      const reReviewResult = await reviewCode(state.code!, state.plan!);
+      state.review = reReviewResult.review;
+      totalTokens += reReviewResult.tokensUsed;
+
+      const scoreDiff = state.review.overallScore - prevScore;
+      console.log(
+        `   📊 Score: ${state.review.overallScore}/100 (${scoreDiff >= 0 ? '+' : ''}${scoreDiff})`
+      );
+      console.log(`   🐛 Issues: ${state.review.issues.length}`);
+      console.log(`   💰 Tokens: ${reReviewResult.tokensUsed}\n`);
+
+      // Check for score decline (fixes made it worse)
+      if (scoreDiff < -10) {
+        console.log(`   ⚠️  Score declined significantly, stopping iterations\n`);
+        break;
+      }
+    }
+
+    // Final quality check
+    if (state.attempts >= MAX_ITERATIONS) {
+      console.log(`⚠️  Reached max iterations (${MAX_ITERATIONS})`);
+      if (state.review.overallScore < QUALITY_THRESHOLD) {
+        console.log(`   ⚠️  Final score (${state.review.overallScore}) below threshold\n`);
+        state.errors.push(`Code quality below threshold: ${state.review.overallScore}/100`);
+      }
+    }
+
+    console.log(`\n📊 === ITERATION SUMMARY ===`);
+    console.log(`   Attempts: ${state.attempts}`);
+    console.log(`   Final Score: ${state.review.overallScore}/100`);
+    console.log(`   Total Tokens: ${totalTokens}`);
+    console.log(`   Estimated Cost: $${((totalTokens / 1000000) * 3).toFixed(4)}`); // Rough estimate
+    console.log('');
 
     // FINAL: Transform to expected format
     console.log('✅ === PIPELINE COMPLETE ===');

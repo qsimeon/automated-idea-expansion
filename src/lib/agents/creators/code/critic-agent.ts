@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeReview, CodeIssue } from './types';
 
 /**
@@ -19,13 +19,12 @@ import type { CodePlan, GeneratedCode, CodeReview, CodeIssue } from './types';
  * - Improves overall quality
  * - Provides feedback for the fixer agent
  *
- * Model choice: Gemini Flash 2.0
- * - **Ultra cheap**: $0.075/1M input tokens (vs GPT-4o-mini at $0.15)
- * - **Huge context**: 2 million tokens (can review entire large codebases)
- * - **Fast**: Low latency
- * - **Good at analysis**: Strong reasoning capabilities
- *
- * This is ~50% cheaper than using GPT-4o-mini for the same task!
+ * Model choice: GPT-4o-mini
+ * - **Cost-effective**: Much cheaper than Sonnet (~$0.002 vs $0.03)
+ * - **Good at review**: Catches common bugs and issues
+ * - **Fast**: Lower latency than larger models
+ * - **Sufficient**: For code quality checks, mini is adequate
+ * - We save the expensive model (Sonnet) for generation where it matters most
  */
 
 export async function reviewCode(
@@ -34,9 +33,9 @@ export async function reviewCode(
 ): Promise<{ review: CodeReview; tokensUsed: number }> {
   console.log(`🔍 Reviewing ${code.files.length} files...`);
 
-  // Initialize Gemini
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn('⚠️  GEMINI_API_KEY not found, skipping code review');
+  // Initialize GPT-4o-mini for cost-effective reviews
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn('⚠️  OPENAI_API_KEY not found, skipping code review');
     return {
       review: {
         hasErrors: false,
@@ -51,17 +50,16 @@ export async function reviewCode(
     };
   }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-flash-latest', // Stable model with generous free tier
+  const model = new ChatOpenAI({
+    modelName: 'gpt-5-nano-2025-08-07',
+    // Note: GPT-5 nano only supports default temperature (1)
   });
 
   const prompt = buildReviewPrompt(code, plan);
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    const result = await model.invoke(prompt);
+    const text = result.content.toString();
 
     // Parse the review
     const review = parseReview(text);
@@ -70,12 +68,14 @@ export async function reviewCode(
     console.log(`  🐛 Issues found: ${review.issues.length}`);
     console.log(`  ✅ Recommendation: ${review.recommendation}`);
 
-    // Estimate tokens (Gemini doesn't provide exact count in free tier)
-    const estimatedTokens = Math.ceil((prompt.length + text.length) / 4);
+    // Get actual token usage from OpenAI
+    const tokensUsed = result.response_metadata?.tokenUsage
+      ? result.response_metadata.tokenUsage.promptTokens + result.response_metadata.tokenUsage.completionTokens
+      : Math.ceil((prompt.length + text.length) / 4); // Fallback estimate
 
     return {
       review,
-      tokensUsed: estimatedTokens,
+      tokensUsed,
     };
   } catch (error) {
     console.error('❌ Critic agent failed:', error);
@@ -120,6 +120,28 @@ ${file.content}
     )
     .join('\n');
 
+  // Build rubric section if available
+  const rubricSection = plan.qualityRubric
+    ? `
+QUALITY RUBRIC (from planning phase):
+Use these specific criteria to evaluate the code:
+
+**Correctness (${(plan.qualityRubric.correctness.weight * 100).toFixed(0)}%):**
+${plan.qualityRubric.correctness.criteria.map((c) => `  ✓ ${c}`).join('\n')}
+
+**Security (${(plan.qualityRubric.security.weight * 100).toFixed(0)}%):**
+${plan.qualityRubric.security.criteria.map((c) => `  ✓ ${c}`).join('\n')}
+
+**Code Quality (${(plan.qualityRubric.codeQuality.weight * 100).toFixed(0)}%):**
+${plan.qualityRubric.codeQuality.criteria.map((c) => `  ✓ ${c}`).join('\n')}
+
+**Completeness (${(plan.qualityRubric.completeness.weight * 100).toFixed(0)}%):**
+${plan.qualityRubric.completeness.criteria.map((c) => `  ✓ ${c}`).join('\n')}
+
+Critical files to focus on: ${plan.criticalFiles?.join(', ') || 'Not specified'}
+`
+    : '';
+
   return `You are an expert code reviewer. Review this ${plan.language} ${plan.outputType} project.
 
 PROJECT PLAN:
@@ -131,6 +153,8 @@ PROJECT PLAN:
 
 PROJECT FILES:
 ${filesContent}
+
+${rubricSection}
 
 REVIEW CHECKLIST:
 
@@ -175,6 +199,19 @@ SCORING GUIDELINES:
 - 60-69: Needs work - Multiple issues
 - Below 60: Poor - Major problems, recommend regenerate
 
+SCORING METHOD:
+1. Evaluate each criterion in the rubric (0-100 for each)
+2. Calculate category scores by averaging criteria in each category
+3. Calculate overall score = weighted sum of category scores
+4. If no rubric provided, use general assessment
+
+PROVIDE ACTIONABLE FEEDBACK:
+For each issue found, provide:
+- Specific file and line (if possible)
+- Clear problem description
+- Concrete fix suggestion (detailed, implementable)
+- Priority: critical/important/minor
+
 CRITICAL: You MUST respond with ONLY valid JSON. Do not include any other text, explanations, or markdown formatting.
 
 REQUIRED JSON FORMAT (copy this structure exactly):
@@ -182,9 +219,30 @@ REQUIRED JSON FORMAT (copy this structure exactly):
   "overallScore": 85,
   "hasErrors": false,
   "recommendation": "approve",
+  "categoryScores": {
+    "correctness": 90,
+    "security": 85,
+    "codeQuality": 80,
+    "completeness": 85
+  },
   "strengths": ["Clean code structure", "Good error handling"],
   "weaknesses": ["Could use more comments"],
   "securityConcerns": [],
+  "filePriority": [
+    {
+      "file": "main.py",
+      "priority": "high",
+      "reason": "Core logic needs input validation"
+    }
+  ],
+  "fixSuggestions": [
+    {
+      "file": "main.py",
+      "issue": "Missing input validation on user input",
+      "suggestedFix": "Add type checking and range validation before processing. Example: if not isinstance(input, str) or len(input) > 1000: raise ValueError('Invalid input')",
+      "priority": "critical"
+    }
+  ],
   "issues": [
     {
       "severity": "warning",
@@ -269,6 +327,23 @@ function parseReview(text: string): CodeReview {
       normalizedRecommendation = 'approve';
     }
 
+    // Add defaults for new optional fields (backward compatibility)
+    if (!parsed.categoryScores) {
+      // Default to overall score for all categories if not provided
+      parsed.categoryScores = {
+        correctness: parsed.overallScore || 70,
+        security: parsed.overallScore || 70,
+        codeQuality: parsed.overallScore || 70,
+        completeness: parsed.overallScore || 70,
+      };
+    }
+    if (!parsed.filePriority || !Array.isArray(parsed.filePriority)) {
+      parsed.filePriority = [];
+    }
+    if (!parsed.fixSuggestions || !Array.isArray(parsed.fixSuggestions)) {
+      parsed.fixSuggestions = [];
+    }
+
     return {
       overallScore: parsed.overallScore,
       hasErrors: parsed.hasErrors,
@@ -283,6 +358,10 @@ function parseReview(text: string): CodeReview {
         message: issue.message || 'No message provided',
         suggestion: issue.suggestion || undefined,
       })),
+      // New fields (with defaults applied above)
+      categoryScores: parsed.categoryScores,
+      filePriority: parsed.filePriority,
+      fixSuggestions: parsed.fixSuggestions,
     };
   } catch (error) {
     console.error('❌ Failed to parse review from Gemini');

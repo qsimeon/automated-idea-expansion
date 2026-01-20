@@ -303,20 +303,20 @@ Extremely cost-effective thanks to:
    Idea: "Build a sentiment analysis CLI tool"
 
 📋 STAGE 1: Planning
-   Agent: Planning Agent (GPT-4o-mini)
+   Agent: Planning Agent
    ✅ Plan: cli-app using python
    📊 Complexity: medium
    💡 Reasoning: CLI tool best for utilities, Python for NLP libraries
    💰 Tokens: 743
 
 🛠️  STAGE 2: Code Generation
-   Agent: Generation Agent (GPT-4o-mini)
+   Agent: Generation Agent
    ✅ Generated 3 files
    📁 Files: main.py, README.md, requirements.txt
    💰 Tokens: 2,847
 
 🔍 STAGE 3: Code Review
-   Agent: Critic Agent (Gemini Flash)
+   Agent: Critic Agent
    📊 Quality Score: 88/100
    🐛 Issues: 2 warnings
    ⚠️  [main.py:23] Consider adding input validation

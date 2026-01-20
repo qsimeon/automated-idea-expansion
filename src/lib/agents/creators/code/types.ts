@@ -6,12 +6,38 @@
  */
 
 /**
+ * QUALITY RUBRIC - Evaluation criteria for code quality
+ *
+ * Defines specific, measurable criteria across four dimensions.
+ * Used by critic agent for consistent evaluation.
+ */
+export interface QualityRubric {
+  correctness: {
+    weight: number; // e.g., 0.4 (40% of total score)
+    criteria: string[]; // e.g., ["All functions have error handling", "Input validation implemented"]
+  };
+  security: {
+    weight: number; // e.g., 0.3 (30% of total score)
+    criteria: string[]; // e.g., ["No hardcoded secrets", "Input sanitization for user data"]
+  };
+  codeQuality: {
+    weight: number; // e.g., 0.2 (20% of total score)
+    criteria: string[]; // e.g., ["Consistent naming conventions", "Functions under 50 lines"]
+  };
+  completeness: {
+    weight: number; // e.g., 0.1 (10% of total score)
+    criteria: string[]; // e.g., ["README with setup instructions", "Example usage included"]
+  };
+}
+
+/**
  * CODE PLAN - Output from Planning Agent
  *
  * The planning agent analyzes the idea and decides:
  * - What type of code output to create
  * - Which programming language to use
  * - How complex the implementation should be
+ * - What quality criteria to enforce (NEW)
  */
 export interface CodePlan {
   // Primary output format
@@ -31,6 +57,20 @@ export interface CodePlan {
 
   // Estimated complexity (for cost/time planning)
   estimatedComplexity: 'low' | 'medium' | 'high';
+
+  // ===== NEW: Iteration Support Fields =====
+
+  // Step-by-step implementation plan
+  implementationSteps?: string[]; // e.g., ["Set up project structure", "Implement core algorithm"]
+
+  // Quality evaluation criteria (used by critic)
+  qualityRubric?: QualityRubric;
+
+  // Critical files that must work correctly
+  criticalFiles?: string[]; // e.g., ["main.py", "README.md"]
+
+  // Test criteria for validation
+  testCriteria?: string[]; // e.g., ["Run without errors", "Handle edge cases"]
 }
 
 /**
@@ -82,6 +122,7 @@ export interface CodeIssue {
  * CODE REVIEW - Output from Critic Agent
  *
  * Reviews generated code for quality, security, and correctness
+ * Now includes actionable feedback for the fixer agent
  */
 export interface CodeReview {
   hasErrors: boolean; // Are there blocking errors?
@@ -93,6 +134,31 @@ export interface CodeReview {
   strengths: string[]; // What's good about the code
   weaknesses: string[]; // What needs improvement
   securityConcerns: string[]; // Any security issues
+
+  // ===== NEW: Actionable Feedback for Fixer Agent =====
+
+  // Scores by rubric category
+  categoryScores?: {
+    correctness: number; // 0-100
+    security: number;
+    codeQuality: number;
+    completeness: number;
+  };
+
+  // Files prioritized for fixing
+  filePriority?: {
+    file: string;
+    priority: 'high' | 'medium' | 'low';
+    reason: string;
+  }[];
+
+  // Specific, actionable fix suggestions
+  fixSuggestions?: {
+    file: string;
+    issue: string;
+    suggestedFix: string; // Detailed, implementable fix instruction
+    priority: 'critical' | 'important' | 'minor';
+  }[];
 }
 
 /**

@@ -3,6 +3,7 @@ import { createBlogPost } from './creators/blog-creator';
 import { createMastodonThread } from './creators/mastodon-creator';
 import { createCodeProjectV2 } from './creators/code/code-creator-v2'; // Multi-stage code creator
 import { createAIImage } from './creators/image-creator';
+import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publisher';
 
 /**
  * CREATOR AGENT (Orchestrator)
@@ -16,7 +17,7 @@ import { createAIImage } from './creators/image-creator';
  * It delegates to the format-specific creator:
  * - blog_post → blogCreator
  * - twitter_thread → mastodonCreator
- * - github_repo → codeCreator
+ * - github_repo → codeCreator-v2
  * - image → imageCreator
  */
 export async function creatorAgent(
@@ -67,10 +68,25 @@ export async function creatorAgent(
       case 'github_repo':
         console.log('Creating code project with multi-stage pipeline...');
         const codeResult = await createCodeProjectV2(selectedIdea);
+
+        // Publish to GitHub (or dry run if environment variables not set)
+        let publishResult = null;
+        const isDryRun = !process.env.GITHUB_TOKEN || !process.env.GITHUB_USERNAME;
+
+        if (isDryRun) {
+          console.log('\n⚠️  GitHub credentials not found - running in DRY RUN mode');
+          console.log('   Set GITHUB_TOKEN and GITHUB_USERNAME to actually create repositories');
+          publishResult = await publishToGitHubDryRun(codeResult.content, state.userId);
+        } else {
+          publishResult = await publishToGitHub(codeResult.content, state.userId);
+        }
+
         return {
           generatedContent: {
             format: 'github_repo',
             ...codeResult.content,
+            published: !isDryRun,
+            publishResult,
           },
           tokensUsed: codeResult.tokensUsed,
         };
