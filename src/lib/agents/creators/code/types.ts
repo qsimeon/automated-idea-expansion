@@ -113,9 +113,9 @@ export interface GeneratedCode {
 export interface CodeIssue {
   severity: 'error' | 'warning' | 'suggestion';
   file: string; // Which file has the issue
-  line?: number; // Line number (if applicable)
+  line: number | null; // Line number (if applicable, or null)
   message: string; // Description of the issue
-  suggestion?: string; // How to fix it (optional)
+  suggestion: string | null; // How to fix it (or null)
 }
 
 /**

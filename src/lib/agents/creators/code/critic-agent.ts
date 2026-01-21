@@ -36,9 +36,9 @@ import { z } from 'zod';
 const CodeIssueSchema = z.object({
   severity: z.enum(['error', 'warning', 'suggestion']).describe('Severity level of the issue'),
   file: z.string().describe('File path where the issue was found'),
-  line: z.number().optional().describe('Line number if applicable'),
+  line: z.union([z.number(), z.null()]).describe('Line number if applicable, or null'),
   message: z.string().describe('Clear description of the issue'),
-  suggestion: z.string().optional().describe('Suggestion for how to fix'),
+  suggestion: z.union([z.string(), z.null()]).describe('Suggestion for how to fix, or null'),
 });
 
 const FilePrioritySchema = z.object({
@@ -137,7 +137,9 @@ export async function reviewCode(
           {
             severity: 'warning',
             file: 'unknown',
+            line: null,
             message: `Code review failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            suggestion: null,
           },
         ],
         overallScore: 70,
