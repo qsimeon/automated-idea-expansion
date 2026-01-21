@@ -1,8 +1,9 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan } from './types';
+import { z } from 'zod';
 
 /**
- * PLANNING AGENT
+ * PLANNING AGENT (V2 - Structured Outputs)
  *
  * Purpose: Analyze an idea and create an implementation plan
  *
@@ -18,11 +19,55 @@ import type { CodePlan } from './types';
  * - Allows us to validate the plan before generating
  * - Easier to add human-in-the-loop approval later
  *
- * Model choice: GPT-4o-mini
- * - Cheap ($0.15/1M input tokens, $0.60/1M output tokens)
+ * V2 Improvements:
+ * - Uses Zod schemas with structured outputs (guaranteed valid JSON)
+ * - No manual JSON parsing or error handling needed
+ * - Type-safe: schema directly matches CodePlan interface
+ *
+ * Model choice: GPT-5 Nano
+ * - Cheap and fast
  * - Good at structured reasoning and decision-making
- * - Fast response time
+ * - Note: Only supports default temperature (1)
  */
+
+// Define the schema for quality rubrics
+const QualityDimensionSchema = z.object({
+  weight: z.number().describe('Weight of this dimension (0-1, should sum to 1 across all dimensions)'),
+  criteria: z.array(z.string()).describe('List of specific, measurable criteria'),
+});
+
+const QualityRubricSchema = z.object({
+  correctness: QualityDimensionSchema.describe('Functional correctness criteria (typically 40% weight)'),
+  security: QualityDimensionSchema.describe('Security criteria (typically 30% weight)'),
+  codeQuality: QualityDimensionSchema.describe('Code quality criteria (typically 20% weight)'),
+  completeness: QualityDimensionSchema.describe('Completeness criteria (typically 10% weight)'),
+});
+
+// Define the main planning schema
+const CodePlanSchema = z.object({
+  outputType: z.enum(['notebook', 'cli-app', 'web-app', 'library', 'demo-script'])
+    .describe('Type of code artifact to generate'),
+  language: z.enum(['python', 'javascript', 'typescript', 'rust'])
+    .describe('Programming language to use'),
+  framework: z.string().nullable()
+    .describe('Framework to use (e.g., "flask", "react", "next.js") or null'),
+  architecture: z.enum(['simple', 'modular', 'full-stack'])
+    .describe('Architectural complexity level'),
+  reasoning: z.string()
+    .describe('2-3 sentences explaining the decisions made'),
+  estimatedComplexity: z.enum(['low', 'medium', 'high'])
+    .describe('Overall implementation difficulty'),
+  implementationSteps: z.array(z.string())
+    .describe('3-7 specific implementation steps in order'),
+  qualityRubric: QualityRubricSchema
+    .describe('Evaluation criteria across four dimensions'),
+  criticalFiles: z.array(z.string())
+    .describe('2-4 critical files that must work correctly'),
+  testCriteria: z.array(z.string())
+    .describe('Criteria to validate the implementation works'),
+});
+
+type CodePlanOutput = z.infer<typeof CodePlanSchema>;
 
 export async function planCodeProject(idea: {
   id: string;
@@ -36,22 +81,29 @@ export async function planCodeProject(idea: {
     // Note: GPT-5 nano only supports default temperature (1)
   });
 
+  // Use structured output (guarantees valid JSON matching our schema)
+  const structuredModel = model.withStructuredOutput(CodePlanSchema);
+
   const prompt = buildPlanningPrompt(idea);
 
   try {
-    const response = await model.invoke(prompt);
-    const tokensUsed = (response.response_metadata as any)?.tokenUsage?.totalTokens || 0;
+    const result = await structuredModel.invoke(prompt);
+    const tokensUsed = 0; // We'll estimate this for structured outputs
 
-    // Parse the JSON response
-    const content = response.content as string;
-    const parsed = parseCodePlan(content);
+    console.log(`  ✅ Plan: ${result.outputType} using ${result.language}`);
+    console.log(`  📊 Complexity: ${result.estimatedComplexity}`);
+    console.log(`  💡 Reasoning: ${result.reasoning.substring(0, 100)}...`);
+    console.log(`  📋 Steps: ${result.implementationSteps.length} implementation steps`);
+    console.log(`  📁 Critical files: ${result.criticalFiles.join(', ')}`);
 
-    console.log(`  ✅ Plan: ${parsed.outputType} using ${parsed.language}`);
-    console.log(`  📊 Complexity: ${parsed.estimatedComplexity}`);
-    console.log(`  💡 Reasoning: ${parsed.reasoning.substring(0, 100)}...`);
+    // Convert to CodePlan (handle nullable framework)
+    const plan: CodePlan = {
+      ...result,
+      framework: result.framework || undefined,
+    };
 
     return {
-      plan: parsed,
+      plan,
       tokensUsed,
     };
   } catch (error) {
@@ -63,7 +115,8 @@ export async function planCodeProject(idea: {
 /**
  * Build the planning prompt
  *
- * This prompt guides the LLM to think like a software architect
+ * This prompt guides the LLM to think like a software architect.
+ * Note: We don't need to specify JSON format - structured outputs handle that automatically.
  */
 function buildPlanningPrompt(idea: {
   title: string;
@@ -75,7 +128,7 @@ IDEA TO IMPLEMENT:
 Title: ${idea.title}
 Description: ${idea.description || 'No additional description provided'}
 
-Your task is to create an implementation plan. Think carefully about:
+Your task is to create a detailed implementation plan. Think carefully about:
 
 1. **OUTPUT TYPE** - What's the best format for this idea?
    - **notebook**: Interactive Jupyter notebook (best for data exploration, tutorials, experiments)
@@ -137,128 +190,32 @@ DECISION GUIDELINES:
 
    For each dimension, list 2-4 specific, measurable criteria.
 
-Respond with ONLY valid JSON (no markdown, no code blocks):
-{
-  "outputType": "<notebook|cli-app|web-app|library|demo-script>",
-  "language": "<python|javascript|typescript|rust>",
-  "framework": "<framework name or null>",
-  "architecture": "<simple|modular|full-stack>",
-  "reasoning": "<2-3 sentences explaining your decisions>",
-  "estimatedComplexity": "<low|medium|high>",
-  "implementationSteps": [
-    "Set up project structure with main file and dependencies",
-    "Implement core functionality with input validation",
-    "Add error handling and edge case coverage",
-    "Create comprehensive README with examples"
-  ],
-  "qualityRubric": {
-    "correctness": {
-      "weight": 0.4,
-      "criteria": [
-        "Code runs without syntax errors",
-        "All functions handle edge cases",
-        "Input validation implemented"
-      ]
-    },
-    "security": {
-      "weight": 0.3,
-      "criteria": [
-        "No hardcoded secrets or credentials",
-        "Input sanitization for user data"
-      ]
-    },
-    "codeQuality": {
-      "weight": 0.2,
-      "criteria": [
-        "Consistent naming conventions",
-        "Adequate comments explaining logic"
-      ]
-    },
-    "completeness": {
-      "weight": 0.1,
-      "criteria": [
-        "README with setup and usage instructions",
-        "Example usage included"
-      ]
-    }
-  },
-  "criticalFiles": ["main.py", "README.md"],
-  "testCriteria": ["Run code without errors", "Test with sample inputs", "Verify all features work"]
-}`;
+EXAMPLE OUTPUT STRUCTURE:
+- outputType: "notebook" for interactive exploration, "cli-app" for command-line tools, etc.
+- language: "python" for data/ML, "typescript" for web apps, etc.
+- framework: "flask", "next.js", or null
+- architecture: "simple" (<100 lines), "modular" (100-500 lines), "full-stack" (>500 lines)
+- reasoning: 2-3 sentences explaining your architectural decisions
+- estimatedComplexity: "low" (straightforward), "medium" (some complexity), "high" (advanced)
+- implementationSteps: 3-7 ordered steps like:
+  * "Set up project structure with main file and dependencies"
+  * "Implement core functionality with input validation"
+  * "Add error handling and edge case coverage"
+  * "Create comprehensive README with examples"
+- qualityRubric: Four dimensions with weights summing to 1.0:
+  * correctness (weight 0.4): ["Code runs without syntax errors", "All functions handle edge cases"]
+  * security (weight 0.3): ["No hardcoded secrets", "Input sanitization"]
+  * codeQuality (weight 0.2): ["Consistent naming", "Adequate comments"]
+  * completeness (weight 0.1): ["README with setup instructions", "Example usage"]
+- criticalFiles: ["main.py", "README.md"] - 2-4 most important files
+- testCriteria: ["Run code without errors", "Test with sample inputs"] - validation steps`;
 }
 
 /**
- * Parse and validate the LLM's response
+ * Note: With structured outputs, we no longer need parseCodePlan()!
+ * The LLM guarantees valid output matching our Zod schema, so:
+ * - No JSON parsing errors
+ * - No validation needed
+ * - No manual error handling
+ * - Type safety built-in
  */
-function parseCodePlan(content: string): CodePlan {
-  try {
-    // Remove markdown code blocks if present
-    let cleaned = content.trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/```json?\n?/g, '').replace(/```\n?/g, '');
-    }
-
-    const parsed = JSON.parse(cleaned);
-
-    // Validate required fields
-    if (!parsed.outputType || !parsed.language || !parsed.architecture || !parsed.reasoning || !parsed.estimatedComplexity) {
-      throw new Error('Missing required fields in plan');
-    }
-
-    // Validate enum values
-    const validOutputTypes = ['notebook', 'cli-app', 'web-app', 'library', 'demo-script'];
-    const validLanguages = ['python', 'javascript', 'typescript', 'rust'];
-    const validArchitectures = ['simple', 'modular', 'full-stack'];
-    const validComplexities = ['low', 'medium', 'high'];
-
-    if (!validOutputTypes.includes(parsed.outputType)) {
-      throw new Error(`Invalid outputType: ${parsed.outputType}`);
-    }
-    if (!validLanguages.includes(parsed.language)) {
-      throw new Error(`Invalid language: ${parsed.language}`);
-    }
-    if (!validArchitectures.includes(parsed.architecture)) {
-      throw new Error(`Invalid architecture: ${parsed.architecture}`);
-    }
-    if (!validComplexities.includes(parsed.estimatedComplexity)) {
-      throw new Error(`Invalid estimatedComplexity: ${parsed.estimatedComplexity}`);
-    }
-
-    // Add defaults for new optional fields (backward compatibility)
-    if (!parsed.implementationSteps || !Array.isArray(parsed.implementationSteps)) {
-      parsed.implementationSteps = [];
-    }
-    if (!parsed.criticalFiles || !Array.isArray(parsed.criticalFiles)) {
-      parsed.criticalFiles = [];
-    }
-    if (!parsed.testCriteria || !Array.isArray(parsed.testCriteria)) {
-      parsed.testCriteria = [];
-    }
-    if (!parsed.qualityRubric) {
-      // Default rubric if not provided
-      parsed.qualityRubric = {
-        correctness: { weight: 0.4, criteria: ["Code runs without errors"] },
-        security: { weight: 0.3, criteria: ["No security issues"] },
-        codeQuality: { weight: 0.2, criteria: ["Code is readable"] },
-        completeness: { weight: 0.1, criteria: ["All required files present"] },
-      };
-    }
-
-    return {
-      outputType: parsed.outputType,
-      language: parsed.language,
-      framework: parsed.framework || undefined,
-      architecture: parsed.architecture,
-      reasoning: parsed.reasoning,
-      estimatedComplexity: parsed.estimatedComplexity,
-      // New fields (with defaults applied above)
-      implementationSteps: parsed.implementationSteps,
-      qualityRubric: parsed.qualityRubric,
-      criticalFiles: parsed.criticalFiles,
-      testCriteria: parsed.testCriteria,
-    };
-  } catch (error) {
-    console.error('Failed to parse plan:', content);
-    throw new Error(`Plan parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}

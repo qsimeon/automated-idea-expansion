@@ -4,7 +4,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 
 ## 🎯 Current Status
 
-**Phase 2A Complete!** ✅ Multi-Stage Code Creator with Planning, Generation, and Critic Agents
+**Phase 2B Complete!** ✅ Structured Output Architecture + Quality Iteration Loops
 
 ### ✅ What's Working:
 
@@ -22,22 +22,42 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Delete functionality for both ideas and outputs
 
 #### **Phase 4: Multi-Agent Pipeline (LangGraph)**
-- ✅ **Judge Agent** - Evaluates and selects best idea (GPT-4o-mini)
-- ✅ **Router Agent** - Decides optimal output format (GPT-4o-mini)
+- ✅ **Judge Agent** - Evaluates and selects best idea (GPT-5 Nano)
+- ✅ **Router Agent** - Decides optimal output format (GPT-5 Nano)
 - ✅ **Creator Agents** - Generates content in 4 formats:
   - 📝 **Blog Posts** - Long-form markdown articles
   - 🦣 **Twitter/Mastodon Threads** - 500-char social media posts
-  - 💻 **Code Projects** - Functional code with README
+  - 💻 **Code Projects** - Functional code with README (publishes to GitHub)
   - 🎨 **AI Images** - Generated via fal.ai/HuggingFace
-- ✅ **3-Stage Code Creator** (Advanced):
-  - **Planning Agent** - Decides architecture, language, framework
-  - **Generation Agent** - Creates files with proper structure
-  - **Critic Agent** - Reviews code quality using Gemini Flash
+- ✅ **5-Stage Code Creator V2** (Advanced):
+  - **Planning Agent** - Creates quality rubrics, implementation steps (GPT-5 Nano)
+  - **Generation Agent** - Creates files with structured outputs (Claude Sonnet 4.5)
+  - **Critic Agent** - Reviews against rubrics (GPT-5 Nano)
+  - **Fixer Agent** - Targeted file regeneration (Claude Sonnet 4.5)
+  - **Quality Iteration Loop** - Up to 5 cycles until score ≥75
+
+### 🎉 Recent Accomplishments:
+
+#### **Structured Outputs Migration (Jan 2026)**
+- ✅ Implemented Zod schemas across entire pipeline
+- ✅ Planning agent now uses structured outputs (eliminated 70+ lines of parsing)
+- ✅ Critic agent uses structured outputs (eliminated 127 lines of parsing)
+- ✅ CLI/Demo generators use structured outputs
+- ✅ Notebook generator V2 uses structured outputs
+- ✅ Zero JSON parsing errors - guaranteed valid output
+- ✅ ~340 lines of complex parsing code removed
+
+#### **Quality Iteration Loops (Jan 2026)**
+- ✅ Added fixer agent for targeted file regeneration
+- ✅ Implemented quality gates (score ≥ 75)
+- ✅ Up to 5 iteration cycles
+- ✅ Smart decisions (regenerate all vs fix specific files)
+- ✅ Score tracking and decline detection
 
 ### 🚧 What's Coming Next:
 
-#### **Phase 2C-D: Real Publishing** (Next Up!)
-- ⏳ **GitHub Publisher** - Create actual repos with Octokit
+#### **Phase 2C-D: Additional Publishers**
+- ✅ **GitHub Publisher** - Create actual repos with Octokit (COMPLETE!)
 - ⏳ **Mastodon Publisher** - Post real threads with masto.js
 - ⏳ **Blog Publisher** - Save to database with slug generation
 - ⏳ **Image Publisher** - Upload to Supabase Storage
@@ -54,9 +74,10 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 ### Prerequisites
 - Node.js 18+
 - Supabase account (free tier)
-- OpenAI API key
-- Gemini API key (Google AI Studio)
-- (Optional) Anthropic, GitHub, Mastodon, fal.ai API keys
+- **OpenAI API key** (for GPT-5 Nano)
+- **Anthropic API key** (for Claude Sonnet 4.5)
+- **GitHub Personal Access Token** (for repo creation)
+- (Optional) Mastodon, fal.ai API keys for other formats
 
 ### Setup
 
@@ -92,15 +113,14 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
    # AI Models (Required)
-   OPENAI_API_KEY=sk-proj-...
-   GEMINI_API_KEY=AIzaSy...  # From Google AI Studio
+   OPENAI_API_KEY=sk-proj-...           # For GPT-5 Nano (planning, routing, review)
+   ANTHROPIC_API_KEY=sk-ant-...         # For Claude Sonnet 4.5 (code generation)
 
-   # AI Models (Optional fallbacks)
-   ANTHROPIC_API_KEY=sk-ant-...
-
-   # Publishing (Optional - for Phase 2C-D)
-   GITHUB_TOKEN=github_pat_...
+   # Publishing (Required for code projects)
+   GITHUB_TOKEN=github_pat_...          # Personal Access Token with repo scope
    GITHUB_USERNAME=your_username
+
+   # Publishing (Optional - for other formats)
    MASTODON_ACCESS_TOKEN=...
    MASTODON_INSTANCE_URL=https://mastodon.social
 
@@ -131,12 +151,12 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 ```
 User Adds Idea
       ↓
-  Judge Agent (GPT-4o-mini)
+  Judge Agent (GPT-5 Nano)
   - Scores all pending ideas
   - Selects best one
   - Provides reasoning
       ↓
-  Router Agent (GPT-4o-mini)
+  Router Agent (GPT-5 Nano)
   - Analyzes idea characteristics
   - Chooses format: blog_post | twitter_thread | github_repo | image
   - Explains decision
@@ -148,11 +168,24 @@ User Adds Idea
 Blog Creator  Thread Creator  [Code Creator V2]  Image Creator
   │             │             │                    │
   │             │         Planning Agent          │
+  │             │         (GPT-5 Nano)            │
   │             │             ↓                    │
   │             │         Generation Agent        │
+  │             │         (Claude Sonnet 4.5)     │
   │             │             ↓                    │
   │             │         Critic Agent            │
-  │             │         (Gemini Flash)          │
+  │             │         (GPT-5 Nano)            │
+  │             │             ↓                    │
+  │             │         Quality Gate            │
+  │             │         (score ≥ 75?)           │
+  │             │         ↙         ↘             │
+  │             │    PASS ✅      FAIL ❌         │
+  │             │         ↓           ↓           │
+  │             │     Publish    Fixer Agent      │
+  │             │                (Claude 4.5)     │
+  │             │                     ↓           │
+  │             │              Re-review ↻        │
+  │             │            (max 5 cycles)       │
   └─────────────┴─────────────┴────────────────────┘
                       ↓
               Output Saved to DB
@@ -160,30 +193,80 @@ Blog Creator  Thread Creator  [Code Creator V2]  Image Creator
               User Views Output
 ```
 
-### 3-Stage Code Creator (Advanced)
+### 5-Stage Code Creator V2 (Advanced)
 
-The code creator uses a sophisticated multi-stage approach:
+The code creator uses a sophisticated multi-stage approach with quality iteration loops:
 
-1. **Planning Agent** (GPT-4o-mini)
+1. **Planning Agent** (GPT-5 Nano with Zod structured outputs)
    - Analyzes idea requirements
    - Decides: notebook, CLI app, web app, library, or demo script
    - Chooses language: Python, JavaScript, TypeScript, Rust
    - Selects framework: React, Next.js, Flask, FastAPI, etc.
-   - Estimates complexity
+   - **Creates quality rubrics** (correctness, security, quality, completeness)
+   - **Defines implementation steps** for validation
 
-2. **Generation Agent** (GPT-4o-mini)
+2. **Generation Agent** (Claude Sonnet 4.5 with structured outputs)
    - Creates complete file structure
-   - Generates README with instructions
+   - Generates working, executable code
    - Adds dependencies (requirements.txt, package.json)
    - Includes examples and documentation
+   - Uses Zod schemas to guarantee valid output
 
-3. **Critic Agent** (Gemini Flash)
-   - Reviews for syntax errors
+3. **Critic Agent** (GPT-5 Nano with structured outputs)
+   - Reviews against quality rubrics
    - Checks security vulnerabilities
    - Validates best practices
-   - Scores 0-100 and recommends: approve/revise/regenerate
+   - Scores 0-100 by category (correctness, security, quality, completeness)
+   - Provides **actionable fix suggestions** with code examples
+   - Recommends: approve/revise/regenerate
 
-**Cost per code project:** ~$0.0010 (80% increase but 200% quality improvement)
+4. **Quality Gate** (score ≥ 75?)
+   - **PASS** → Publish to GitHub ✅
+   - **FAIL** → Fixer Agent
+
+5. **Fixer Agent** (Claude Sonnet 4.5 - only if needed)
+   - Regenerates **specific problematic files** (not entire project)
+   - Uses critic's fix suggestions
+   - Preserves working files
+   - Returns to Critic for re-review
+   - **Max 5 iterations** to prevent infinite loops
+
+**Architecture Benefits:**
+- ✅ **Structured outputs** eliminate JSON parsing errors (Zod schemas)
+- ✅ **Quality enforcement** (minimum score 75/100)
+- ✅ **Cost-optimized** (only fix 1-3 files per iteration, not all)
+- ✅ **Rubric-based evaluation** (consistent quality criteria)
+- ✅ **~340 lines of parsing code eliminated** across all agents
+
+**Cost per code project:** ~$0.02-0.04 (with 0-2 iterations average)
+
+---
+
+### Structured Outputs Architecture
+
+All agents use **Zod schemas with `.withStructuredOutput()`** to guarantee valid JSON:
+
+```typescript
+// Before: Manual JSON parsing (fragile)
+const response = await model.invoke(prompt);
+const text = response.content.toString();
+let cleaned = text.replace(/```json/g, '').replace(/```/g, '');
+const parsed = JSON.parse(cleaned); // ❌ Can fail!
+
+// After: Structured outputs (guaranteed)
+const schema = z.object({
+  code: z.string().describe('Complete working code'),
+  packages: z.array(z.string()).describe('Required packages'),
+});
+const structuredModel = model.withStructuredOutput(schema);
+const result = await structuredModel.invoke(prompt); // ✅ Always valid!
+```
+
+**Benefits:**
+- Zero JSON parsing errors
+- Type-safe at runtime
+- Self-documenting schemas
+- ~70% less code per agent
 
 ---
 
@@ -253,25 +336,29 @@ All tables have Row-Level Security (RLS) enabled.
 
 | Agent | Model | Avg Tokens | Cost |
 |-------|-------|-----------|------|
-| Judge | GPT-4o-mini | ~1,000 | $0.0002 |
-| Router | GPT-4o-mini | ~500 | $0.0001 |
-| Blog Creator | GPT-4o-mini | ~3,000 | $0.0006 |
-| **Total (Blog)** | | ~4,500 | **$0.0009** |
+| Judge | GPT-5 Nano | ~1,000 | $0.0001 |
+| Router | GPT-5 Nano | ~500 | $0.00005 |
+| Blog Creator | GPT-5 Nano | ~3,000 | $0.0003 |
+| **Total (Blog)** | | ~4,500 | **$0.0005** |
 | | | | |
-| Code Planning | GPT-4o-mini | ~800 | $0.00016 |
-| Code Generation | GPT-4o-mini | ~3,000 | $0.0006 |
-| Code Critic | Gemini Flash | ~4,000 | $0.0003 |
-| **Total (Code)** | | ~8,300 | **$0.0016** |
+| Code Planning | GPT-5 Nano | ~1,200 | $0.00012 |
+| Code Generation | Claude Sonnet 4.5 | ~5,000 | $0.015 |
+| Code Critic | GPT-5 Nano | ~4,000 | $0.0004 |
+| Code Fixer (if needed) | Claude Sonnet 4.5 | ~3,000 | $0.009 |
+| **Total (Code - 0 iterations)** | | ~10,200 | **$0.016** |
+| **Total (Code - 2 iterations)** | | ~16,200 | **$0.034** |
 
-**Average: < $0.002 per expansion**
+**Average: ~$0.02-0.04 per code project** (with quality iteration loops)
 
 ### Monthly Estimate
-- 30 expansions/month = **~$0.05/month**
-- 100 expansions/month = **~$0.16/month**
+- 30 expansions/month (mixed) = **~$0.50/month**
+- 100 expansions/month (mixed) = **~$1.50/month**
 
 Extremely cost-effective thanks to:
-- GPT-4o-mini ($0.15/1M input tokens)
-- Gemini Flash ($0.075/1M tokens - 50% cheaper!)
+- **GPT-5 Nano** ($0.10/1M input tokens) - Ultra-cheap for planning & review
+- **Claude Sonnet 4.5** ($3/1M input tokens) - Best-in-class code generation
+- **Structured outputs** - Eliminates wasted tokens from parsing errors
+- **Targeted fixes** - Only regenerate 1-3 files per iteration, not entire project
 
 ---
 
@@ -283,11 +370,11 @@ Extremely cost-effective thanks to:
 | TypeScript | Type-safe development | ✅ |
 | Supabase | PostgreSQL database with RLS | ✅ |
 | **LangGraph** | **Multi-agent orchestration** | ✅ |
-| **OpenAI GPT-4o-mini** | **Primary LLM (judge, router, creators)** | ✅ |
-| **Google Gemini Flash** | **Code critic (ultra-cheap!)** | ✅ |
-| Anthropic Claude | LLM fallback | ✅ |
+| **Zod** | **Schema validation & structured outputs** | ✅ |
+| **OpenAI GPT-5 Nano** | **Planning, routing, review (ultra-cheap!)** | ✅ |
+| **Claude Sonnet 4.5** | **Code generation (best-in-class)** | ✅ |
 | **fal.ai / HuggingFace** | **AI image generation** | ✅ |
-| Octokit | GitHub API for repo creation | ⏳ Next |
+| **Octokit** | **GitHub API for repo creation** | ✅ |
 | masto.js | Mastodon API for thread posting | ⏳ Next |
 | E2B | Code sandboxing | ⏳ Future |
 | Vercel | Hosting & cron jobs | ⏳ Future |

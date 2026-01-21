@@ -2,9 +2,10 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeFile } from './types';
 import { generateNotebookV2 } from './notebook-generator-v2';
+import { z } from 'zod';
 
 /**
- * GENERATION AGENT
+ * GENERATION AGENT (V2 - Structured Outputs)
  *
  * Purpose: Generate actual code based on the plan
  *
@@ -21,13 +22,32 @@ import { generateNotebookV2 } from './notebook-generator-v2';
  * - Library → Generate module with exports and documentation
  * - Demo Script → Generate single standalone file
  *
- * Model choice: Claude Sonnet 3.5/4
+ * V2 Improvements:
+ * - Uses Zod schemas with structured outputs (guaranteed valid JSON)
+ * - No manual JSON parsing or cleaning needed
+ * - Type-safe generation
+ *
+ * Model choice: Claude Sonnet 4.5
  * - BEST at code generation (tops all coding benchmarks)
  * - Superior at creating working, executable code
  * - Excellent understanding of best practices and patterns
- * - Stronger at complex logic than GPT-4o
  * - Cost: ~$0.015 per code project (worth it for quality)
  */
+
+// Schemas for code generation
+const CLIAppSchema = z.object({
+  code: z.string().describe('Complete, working CLI application code'),
+  requiredPackages: z.array(z.string()).describe('Required packages/dependencies'),
+  usage: z.string().describe('Usage example (e.g., "python main.py --help")'),
+});
+
+const DemoScriptSchema = z.object({
+  code: z.string().describe('Complete, working demo script code'),
+  requiredPackages: z.array(z.string()).describe('Required packages/dependencies'),
+});
+
+type CLIAppOutput = z.infer<typeof CLIAppSchema>;
+type DemoScriptOutput = z.infer<typeof DemoScriptSchema>;
 
 export async function generateCode(
   plan: CodePlan,
@@ -53,245 +73,10 @@ export async function generateCode(
 }
 
 /**
- * NOTEBOOK GENERATOR
- *
- * Creates a Jupyter notebook (.ipynb file) with:
- * - Markdown cells explaining the concept
- * - Code cells with implementation
- * - Example usage
- * - Visualizations (if applicable)
+ * Note: Old generateNotebook() function removed - we now use generateNotebookV2()
+ * from ./notebook-generator-v2.ts which uses structured outputs with Zod schemas.
  */
-/**
- * Schema for notebook generation response
- */
-interface NotebookCell {
-  type: 'markdown' | 'code';
-  content: string[] | string; // Support both arrays and strings for backward compatibility
-}
 
-interface NotebookGenerationResponse {
-  cells: NotebookCell[];
-  requiredPackages: string[];
-}
-
-async function generateNotebook(
-  plan: CodePlan,
-  idea: { title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
-  // Use Claude Sonnet 4.5 for BEST code generation
-  const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
-    temperature: 0.3, // Lower temp for more reliable, executable code
-  });
-
-  const prompt = `Create a WORKING Jupyter notebook that implements: ${idea.title}
-
-Description: ${idea.description || 'No additional description'}
-
-Requirements:
-- Language: ${plan.language}
-- Architecture: ${plan.architecture}
-${plan.framework ? `- Framework: ${plan.framework}` : ''}
-- Make it interactive, educational, and FULLY EXECUTABLE
-- Each code cell must be RUNNABLE in order (1→2→3)
-- Include all necessary imports in the first code cell
-- Include markdown cells explaining each step
-- Add visualizations where appropriate
-- Include working example usage with real data
-
-CRITICAL: The notebook MUST:
-1. Have ALL cells executable without errors
-2. Run sequentially from top to bottom
-3. Include ALL necessary imports upfront
-4. Use real, working examples (not placeholder/stub code)
-5. Handle errors gracefully
-6. Be production-quality, not a sketch
-
-Structure the notebook with these cells:
-
-1. **Title and Introduction** (markdown)
-   - Explain what this notebook does
-   - List prerequisites
-
-2. **Setup and Imports** (code)
-   - Import necessary libraries
-   - Define any configuration
-
-3. **Implementation** (alternating markdown + code)
-   - Implement the main functionality
-   - Add markdown cells explaining the logic
-   - Break complex sections into multiple cells
-
-4. **Examples and Usage** (code)
-   - Show practical examples
-   - Include test cases if applicable
-
-5. **Conclusion** (markdown)
-   - Summarize what was built
-   - Suggest next steps or extensions
-
-CRITICAL FORMATTING INSTRUCTIONS:
-- Return ONLY valid JSON, no markdown code blocks
-- Use arrays of strings (lines) for cell content - NO ESCAPING NEEDED
-- Format: {"cells": [...], "requiredPackages": [...]}
-- Each cell: {"type": "markdown"|"code", "content": ["line1", "line2", ...]}
-- Each line in the array is a separate string (no \\n needed)
-- This avoids escaping issues and makes parsing reliable
-
-Example valid response:
-{
-  "cells": [
-    {
-      "type": "markdown",
-      "content": [
-        "# Title",
-        "Description here"
-      ]
-    },
-    {
-      "type": "code",
-      "content": [
-        "import numpy as np",
-        "print('Hello')"
-      ]
-    }
-  ],
-  "requiredPackages": ["numpy", "torch"]
-}`;
-
-  const response = await model.invoke(prompt);
-  const rawContent = response.content.toString();
-
-  console.log('📥 Raw response length:', rawContent.length);
-  console.log('📥 First 200 chars:', rawContent.substring(0, 200));
-
-  // Try to extract JSON (handle code blocks or plain JSON)
-  let jsonContent = rawContent;
-
-  // Remove markdown code blocks if present (multiple strategies)
-  if (rawContent.includes('```')) {
-    // Strategy 1: Match full code block
-    const codeBlockMatch = rawContent.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
-    if (codeBlockMatch) {
-      jsonContent = codeBlockMatch[1];
-      console.log('✂️  Extracted from code block (strategy 1)');
-    } else {
-      // Strategy 2: Simple replace
-      jsonContent = rawContent
-        .replace(/^```(?:json)?\s*\n?/m, '')  // Remove opening ```json
-        .replace(/\n?```\s*$/m, '');          // Remove closing ```
-      console.log('✂️  Extracted from code block (strategy 2 - replace)');
-    }
-  }
-
-  // Trim whitespace
-  jsonContent = jsonContent.trim();
-
-  console.log('🔍 Parsing JSON...');
-  console.log('📏 JSON content length:', jsonContent.length);
-  console.log('📏 First 100 chars of JSON:', jsonContent.substring(0, 100));
-
-  let parsed: NotebookGenerationResponse;
-  try {
-    parsed = JSON.parse(jsonContent);
-    console.log('✅ JSON parsed successfully');
-    console.log(`📊 Generated ${parsed.cells?.length || 0} cells`);
-  } catch (parseError) {
-    console.error('❌ JSON parse failed!');
-    console.error('   Error:', (parseError as any).message);
-    console.error('   Content to parse (first 500 chars):', jsonContent.substring(0, 500));
-    console.error('   Last 100 chars:', jsonContent.substring(jsonContent.length - 100));
-    throw new Error(`Failed to parse notebook JSON: ${(parseError as any).message}`);
-  }
-
-  try {
-    // Get actual token usage from OpenAI
-    const tokensUsed = (response.response_metadata as any)?.tokenUsage?.totalTokens
-      || Math.ceil(prompt.length / 4) + Math.ceil(JSON.stringify(parsed).length / 4);
-
-    // Convert to .ipynb format
-    const notebookContent = {
-      cells: parsed.cells.map((cell: any) => {
-        // Handle both array and string formats for backward compatibility
-        const sourceLines = Array.isArray(cell.content)
-          ? cell.content  // Already an array
-          : cell.content.split('\n');  // String, need to split
-
-        return {
-          cell_type: cell.type === 'markdown' ? 'markdown' : 'code',
-          metadata: {},
-          source: sourceLines,
-          ...(cell.type === 'code' ? { outputs: [], execution_count: null } : {}),
-        };
-      }),
-      metadata: {
-        kernelspec: {
-          display_name: plan.language === 'python' ? 'Python 3' : 'JavaScript (Node.js)',
-          language: plan.language,
-          name: plan.language === 'python' ? 'python3' : 'javascript',
-        },
-        language_info: {
-          name: plan.language,
-        },
-      },
-      nbformat: 4,
-      nbformat_minor: 4,
-    };
-
-    // Generate SHORT repo name
-    const repoName = await generateRepoName(idea, plan);
-
-    const files: CodeFile[] = [
-      {
-        path: 'notebook.ipynb',
-        content: JSON.stringify(notebookContent, null, 2),
-        language: 'json',
-      },
-      {
-        path: 'README.md',
-        content: generateReadme({
-          title: idea.title,
-          description: idea.description || '',
-          language: plan.language,
-          setupInstructions: plan.language === 'python'
-            ? 'pip install ' + (parsed.requiredPackages || []).join(' ')
-            : 'npm install ' + (parsed.requiredPackages || []).join(' '),
-          runInstructions: 'Open notebook.ipynb in Jupyter Lab or upload to Google Colab',
-        }),
-      },
-    ];
-
-    // Add requirements/package file
-    if (plan.language === 'python' && parsed.requiredPackages?.length > 0) {
-      files.push({
-        path: 'requirements.txt',
-        content: parsed.requiredPackages.join('\n'),
-      });
-    }
-
-    return {
-      code: {
-        repoName,
-        description: idea.description || idea.title,
-        files,
-        dependencies: {
-          runtime: [plan.language === 'python' ? 'python' : 'node'],
-          packages: parsed.requiredPackages || [],
-        },
-        setupInstructions: plan.language === 'python'
-          ? 'pip install -r requirements.txt'
-          : 'npm install',
-        runInstructions: 'jupyter lab notebook.ipynb',
-        type: plan.language,
-        outputType: 'notebook',
-      },
-      tokensUsed,
-    };
-  } catch (error) {
-    console.error('Failed to parse notebook generation:', error);
-    throw error;
-  }
-}
 
 /**
  * CLI APP GENERATOR
@@ -311,6 +96,9 @@ async function generateCLIApp(
     modelName: 'claude-sonnet-4-5-20250929',
     temperature: 0.3, // Lower temp for more reliable code
   });
+
+  // Use structured output (guarantees valid JSON)
+  const structuredModel = model.withStructuredOutput(CLIAppSchema);
 
   const mainFile = plan.language === 'python' ? 'main.py' : plan.language === 'typescript' ? 'index.ts' : 'index.js';
 
@@ -352,24 +140,14 @@ Example CLI structure for JavaScript/TypeScript:
 
 Provide the COMPLETE, RUNNABLE code for ${mainFile}.
 
-Respond with ONLY valid JSON (no markdown blocks):
-{
-  "code": "complete working code here",
-  "requiredPackages": ["package1", "package2"],
-  "usage": "python main.py --example or node index.js --example"
-}`;
-
-  const response = await model.invoke(prompt);
-  const tokensUsed = (response.response_metadata as any)?.tokenUsage?.totalTokens || 0;
-  const content = response.content as string;
+OUTPUT STRUCTURE:
+- code: Complete working code as a single string
+- requiredPackages: Array of package names (e.g., ["numpy", "requests"])
+- usage: Usage example string (e.g., "python main.py --help")`;
 
   try {
-    // Parse JSON response (Claude is good at following instructions)
-    let cleaned = content.trim();
-    if (cleaned.includes('```')) {
-      cleaned = cleaned.replace(/```json?\n?/g, '').replace(/```\n?/g, '');
-    }
-    const parsed = JSON.parse(cleaned);
+    const result = await structuredModel.invoke(prompt);
+    const tokensUsed = 0; // We'll estimate this for structured outputs
 
     // Generate SHORT, descriptive repo name
     const repoName = await generateRepoName(idea, plan);
@@ -377,7 +155,7 @@ Respond with ONLY valid JSON (no markdown blocks):
     const files: CodeFile[] = [
       {
         path: mainFile,
-        content: parsed.code,
+        content: result.code,
         language: plan.language,
       },
       {
@@ -387,20 +165,20 @@ Respond with ONLY valid JSON (no markdown blocks):
           description: idea.description || '',
           language: plan.language,
           setupInstructions: plan.language === 'python'
-            ? '```bash\npip install ' + (parsed.requiredPackages || []).join(' ') + '\n```'
-            : '```bash\nnpm install ' + (parsed.requiredPackages || []).join(' ') + '\n```',
-          runInstructions: '```bash\n' + (parsed.usage || `${plan.language === 'python' ? 'python' : 'node'} ${mainFile}`) + '\n```',
+            ? '```bash\npip install ' + (result.requiredPackages || []).join(' ') + '\n```'
+            : '```bash\nnpm install ' + (result.requiredPackages || []).join(' ') + '\n```',
+          runInstructions: '```bash\n' + (result.usage || `${plan.language === 'python' ? 'python' : 'node'} ${mainFile}`) + '\n```',
         }),
       },
     ];
 
     // Add requirements/package file
-    if (plan.language === 'python' && parsed.requiredPackages?.length > 0) {
+    if (plan.language === 'python' && result.requiredPackages?.length > 0) {
       files.push({
         path: 'requirements.txt',
-        content: parsed.requiredPackages.join('\n'),
+        content: result.requiredPackages.join('\n'),
       });
-    } else if ((plan.language === 'javascript' || plan.language === 'typescript') && parsed.requiredPackages?.length > 0) {
+    } else if ((plan.language === 'javascript' || plan.language === 'typescript') && result.requiredPackages?.length > 0) {
       files.push({
         path: 'package.json',
         content: JSON.stringify(
@@ -412,7 +190,7 @@ Respond with ONLY valid JSON (no markdown blocks):
             scripts: {
               start: `node ${mainFile}`,
             },
-            dependencies: parsed.requiredPackages.reduce((acc: any, pkg: string) => {
+            dependencies: result.requiredPackages.reduce((acc: any, pkg: string) => {
               acc[pkg] = '*';
               return acc;
             }, {}),
@@ -430,7 +208,7 @@ Respond with ONLY valid JSON (no markdown blocks):
         files,
         dependencies: {
           runtime: [plan.language === 'python' ? 'python' : 'node'],
-          packages: parsed.requiredPackages || [],
+          packages: result.requiredPackages || [],
         },
         setupInstructions: plan.language === 'python'
           ? 'pip install -r requirements.txt'
@@ -510,23 +288,16 @@ CRITICAL: The code MUST:
 
 Provide COMPLETE, TESTED-QUALITY code for ${fileName}.
 
-Respond with ONLY valid JSON (no markdown blocks):
-{
-  "code": "complete working code here",
-  "requiredPackages": ["package1", "package2"]
-}`;
+OUTPUT STRUCTURE:
+- code: Complete working code as a single string
+- requiredPackages: Array of package names (e.g., ["numpy", "requests"])`;
 
-  const response = await model.invoke(prompt);
-  const tokensUsed = (response.response_metadata as any)?.tokenUsage?.totalTokens || 0;
-  const content = response.content as string;
+  // Use structured output (guarantees valid JSON)
+  const structuredModel = model.withStructuredOutput(DemoScriptSchema);
 
   try {
-    // Parse JSON response
-    let cleaned = content.trim();
-    if (cleaned.includes('```')) {
-      cleaned = cleaned.replace(/```json?\n?/g, '').replace(/```\n?/g, '');
-    }
-    const parsed = JSON.parse(cleaned);
+    const result = await structuredModel.invoke(prompt);
+    const tokensUsed = 0; // We'll estimate this for structured outputs
 
     // Generate SHORT repo name
     const repoName = await generateRepoName(idea, plan);
@@ -534,7 +305,7 @@ Respond with ONLY valid JSON (no markdown blocks):
     const files: CodeFile[] = [
       {
         path: fileName,
-        content: parsed.code,
+        content: result.code,
         language: plan.language,
       },
       {
@@ -543,10 +314,10 @@ Respond with ONLY valid JSON (no markdown blocks):
           title: idea.title,
           description: idea.description || '',
           language: plan.language,
-          setupInstructions: parsed.requiredPackages?.length > 0
+          setupInstructions: result.requiredPackages?.length > 0
             ? plan.language === 'python'
-              ? '```bash\npip install ' + parsed.requiredPackages.join(' ') + '\n```'
-              : '```bash\nnpm install ' + parsed.requiredPackages.join(' ') + '\n```'
+              ? '```bash\npip install ' + result.requiredPackages.join(' ') + '\n```'
+              : '```bash\nnpm install ' + result.requiredPackages.join(' ') + '\n```'
             : 'No dependencies required',
           runInstructions: '```bash\n' + (plan.language === 'python' ? `python ${fileName}` : `node ${fileName}`) + '\n```',
         }),
@@ -554,11 +325,11 @@ Respond with ONLY valid JSON (no markdown blocks):
     ];
 
     // Add dependencies file if needed
-    if (parsed.requiredPackages?.length > 0) {
+    if (result.requiredPackages?.length > 0) {
       if (plan.language === 'python') {
         files.push({
           path: 'requirements.txt',
-          content: parsed.requiredPackages.join('\n'),
+          content: result.requiredPackages.join('\n'),
         });
       }
     }
@@ -570,9 +341,9 @@ Respond with ONLY valid JSON (no markdown blocks):
         files,
         dependencies: {
           runtime: [plan.language === 'python' ? 'python' : 'node'],
-          packages: parsed.requiredPackages || [],
+          packages: result.requiredPackages || [],
         },
-        setupInstructions: parsed.requiredPackages?.length > 0
+        setupInstructions: result.requiredPackages?.length > 0
           ? plan.language === 'python'
             ? 'pip install -r requirements.txt'
             : 'npm install'

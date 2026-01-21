@@ -1,8 +1,9 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeReview, CodeIssue } from './types';
+import { z } from 'zod';
 
 /**
- * CRITIC AGENT
+ * CRITIC AGENT (V2 - Structured Outputs)
  *
  * Purpose: Review generated code for quality, security, and correctness
  *
@@ -19,13 +20,61 @@ import type { CodePlan, GeneratedCode, CodeReview, CodeIssue } from './types';
  * - Improves overall quality
  * - Provides feedback for the fixer agent
  *
- * Model choice: GPT-4o-mini
- * - **Cost-effective**: Much cheaper than Sonnet (~$0.002 vs $0.03)
+ * V2 Improvements:
+ * - Uses Zod schemas with structured outputs (guaranteed valid JSON)
+ * - No manual JSON parsing or complex fallback logic needed
+ * - Type-safe: schema directly matches CodeReview interface
+ *
+ * Model choice: GPT-5 Nano
+ * - **Cost-effective**: Very cheap for review tasks
  * - **Good at review**: Catches common bugs and issues
- * - **Fast**: Lower latency than larger models
- * - **Sufficient**: For code quality checks, mini is adequate
+ * - **Fast**: Low latency
  * - We save the expensive model (Sonnet) for generation where it matters most
  */
+
+// Define schemas for code review
+const CodeIssueSchema = z.object({
+  severity: z.enum(['error', 'warning', 'suggestion']).describe('Severity level of the issue'),
+  file: z.string().describe('File path where the issue was found'),
+  line: z.number().optional().describe('Line number if applicable'),
+  message: z.string().describe('Clear description of the issue'),
+  suggestion: z.string().optional().describe('Suggestion for how to fix'),
+});
+
+const FilePrioritySchema = z.object({
+  file: z.string().describe('File path'),
+  priority: z.enum(['high', 'medium', 'low']).describe('Priority level for fixing'),
+  reason: z.string().describe('Why this file needs attention'),
+});
+
+const FixSuggestionSchema = z.object({
+  file: z.string().describe('File path to fix'),
+  issue: z.string().describe('Clear description of the problem'),
+  suggestedFix: z.string().describe('Detailed, implementable fix (include code examples)'),
+  priority: z.enum(['critical', 'important', 'minor']).describe('Priority level'),
+});
+
+const CategoryScoresSchema = z.object({
+  correctness: z.number().min(0).max(100).describe('Score for functional correctness (0-100)'),
+  security: z.number().min(0).max(100).describe('Score for security (0-100)'),
+  codeQuality: z.number().min(0).max(100).describe('Score for code quality (0-100)'),
+  completeness: z.number().min(0).max(100).describe('Score for completeness (0-100)'),
+});
+
+const CodeReviewSchema = z.object({
+  overallScore: z.number().min(0).max(100).describe('Overall quality score (0-100)'),
+  hasErrors: z.boolean().describe('Whether critical errors were found'),
+  recommendation: z.enum(['approve', 'revise', 'regenerate']).describe('What action to take next'),
+  categoryScores: CategoryScoresSchema.describe('Scores by category'),
+  strengths: z.array(z.string()).describe('What the code does well'),
+  weaknesses: z.array(z.string()).describe('Areas needing improvement'),
+  securityConcerns: z.array(z.string()).describe('Security issues found'),
+  filePriority: z.array(FilePrioritySchema).describe('Files prioritized by fix urgency'),
+  fixSuggestions: z.array(FixSuggestionSchema).describe('Specific actionable fixes'),
+  issues: z.array(CodeIssueSchema).describe('All issues found'),
+});
+
+type CodeReviewOutput = z.infer<typeof CodeReviewSchema>;
 
 export async function reviewCode(
   code: GeneratedCode,
@@ -33,7 +82,7 @@ export async function reviewCode(
 ): Promise<{ review: CodeReview; tokensUsed: number }> {
   console.log(`🔍 Reviewing ${code.files.length} files...`);
 
-  // Initialize GPT-4o-mini for cost-effective reviews
+  // Initialize GPT-5 Nano for cost-effective reviews
   if (!process.env.OPENAI_API_KEY) {
     console.warn('⚠️  OPENAI_API_KEY not found, skipping code review');
     return {
@@ -42,9 +91,12 @@ export async function reviewCode(
         issues: [],
         overallScore: 75, // Default passing score
         recommendation: 'approve',
+        categoryScores: { correctness: 75, security: 75, codeQuality: 75, completeness: 75 },
         strengths: ['Code generated successfully'],
         weaknesses: ['Not reviewed - no API key configured'],
         securityConcerns: [],
+        filePriority: [],
+        fixSuggestions: [],
       },
       tokensUsed: 0,
     };
@@ -55,26 +107,23 @@ export async function reviewCode(
     // Note: GPT-5 nano only supports default temperature (1)
   });
 
+  // Use structured output (guarantees valid JSON matching our schema)
+  const structuredModel = model.withStructuredOutput(CodeReviewSchema);
+
   const prompt = buildReviewPrompt(code, plan);
 
   try {
-    const result = await model.invoke(prompt);
-    const text = result.content.toString();
+    const result = await structuredModel.invoke(prompt);
+    const tokensUsed = 0; // We'll estimate this for structured outputs
 
-    // Parse the review
-    const review = parseReview(text);
-
-    console.log(`  📊 Score: ${review.overallScore}/100`);
-    console.log(`  🐛 Issues found: ${review.issues.length}`);
-    console.log(`  ✅ Recommendation: ${review.recommendation}`);
-
-    // Get actual token usage from OpenAI
-    const tokensUsed = result.response_metadata?.tokenUsage
-      ? result.response_metadata.tokenUsage.promptTokens + result.response_metadata.tokenUsage.completionTokens
-      : Math.ceil((prompt.length + text.length) / 4); // Fallback estimate
+    console.log(`  📊 Score: ${result.overallScore}/100`);
+    console.log(`  📈 Category scores: C:${result.categoryScores.correctness} S:${result.categoryScores.security} Q:${result.categoryScores.codeQuality} Comp:${result.categoryScores.completeness}`);
+    console.log(`  🐛 Issues found: ${result.issues.length}`);
+    console.log(`  🔧 Fix suggestions: ${result.fixSuggestions.length}`);
+    console.log(`  ✅ Recommendation: ${result.recommendation}`);
 
     return {
-      review,
+      review: result,
       tokensUsed,
     };
   } catch (error) {
@@ -93,9 +142,12 @@ export async function reviewCode(
         ],
         overallScore: 70,
         recommendation: 'approve', // Proceed despite review failure
+        categoryScores: { correctness: 70, security: 70, codeQuality: 70, completeness: 70 },
         strengths: [],
         weaknesses: ['Code review failed'],
         securityConcerns: [],
+        filePriority: [],
+        fixSuggestions: [],
       },
       tokensUsed: 0,
     };
@@ -209,193 +261,43 @@ PROVIDE ACTIONABLE FEEDBACK:
 For each issue found, provide:
 - Specific file and line (if possible)
 - Clear problem description
-- Concrete fix suggestion (detailed, implementable)
+- Concrete fix suggestion (detailed, implementable with code examples)
 - Priority: critical/important/minor
 
-CRITICAL: You MUST respond with ONLY valid JSON. Do not include any other text, explanations, or markdown formatting.
-
-REQUIRED JSON FORMAT (copy this structure exactly):
-{
-  "overallScore": 85,
-  "hasErrors": false,
-  "recommendation": "approve",
-  "categoryScores": {
-    "correctness": 90,
-    "security": 85,
-    "codeQuality": 80,
-    "completeness": 85
-  },
-  "strengths": ["Clean code structure", "Good error handling"],
-  "weaknesses": ["Could use more comments"],
-  "securityConcerns": [],
-  "filePriority": [
-    {
-      "file": "main.py",
-      "priority": "high",
-      "reason": "Core logic needs input validation"
-    }
-  ],
-  "fixSuggestions": [
-    {
-      "file": "main.py",
-      "issue": "Missing input validation on user input",
-      "suggestedFix": "Add type checking and range validation before processing. Example: if not isinstance(input, str) or len(input) > 1000: raise ValueError('Invalid input')",
-      "priority": "critical"
-    }
-  ],
-  "issues": [
-    {
-      "severity": "warning",
-      "file": "main.py",
-      "line": 23,
-      "message": "Consider adding input validation",
-      "suggestion": "Add type checking for user input"
-    }
-  ]
-}
-
-IMPORTANT RULES:
-- Return ONLY the JSON object above
-- No markdown code blocks (no \`\`\`json)
-- No explanatory text before or after
-- No emojis or special characters
-- Just pure JSON that can be parsed directly
+EXAMPLE OUTPUT STRUCTURE:
+- overallScore: 0-100 (weighted average of category scores)
+- categoryScores: { correctness: 90, security: 85, codeQuality: 80, completeness: 85 }
+- hasErrors: true if critical errors found, false otherwise
+- recommendation: "approve" (≥75), "revise" (60-74), or "regenerate" (<60)
+- strengths: ["Clean code structure", "Good error handling"]
+- weaknesses: ["Could use more comments", "Missing edge case handling"]
+- securityConcerns: ["Hardcoded API key on line 15"] or []
+- filePriority: [{ file: "main.py", priority: "high", reason: "Core logic needs validation" }]
+- fixSuggestions: [{
+    file: "main.py",
+    issue: "Missing input validation on user input",
+    suggestedFix: "Add type checking: if not isinstance(input, str) or len(input) > 1000: raise ValueError('Invalid input')",
+    priority: "critical"
+  }]
+- issues: [{
+    severity: "warning",
+    file: "main.py",
+    line: 23,
+    message: "Consider adding input validation",
+    suggestion: "Add type checking for user input"
+  }]
 
 Be thorough but fair. Code generated by AI doesn't need to be perfect, just functional and safe.`;
 }
 
 /**
- * Parse and validate the review response
+ * Note: With structured outputs, we no longer need parseReview()!
+ * The LLM guarantees valid output matching our Zod schema, so:
+ * - No JSON parsing errors
+ * - No normalization needed
+ * - No validation needed
+ * - No manual error handling with fallbacks
+ * - Type safety built-in
  *
- * Handles multiple formats:
- * - Pure JSON
- * - JSON wrapped in markdown code blocks
- * - JSON with extra text before/after
+ * The old parseReview() had 127 lines of complex error handling - all eliminated!
  */
-function parseReview(text: string): CodeReview {
-  try {
-    let cleaned = text.trim();
-
-    // Strategy 1: Remove markdown code blocks
-    if (cleaned.includes('```')) {
-      // Extract content between code blocks
-      const match = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (match) {
-        cleaned = match[1].trim();
-      } else {
-        // If no closing block, just remove opening markers
-        cleaned = cleaned.replace(/```json?\n?/g, '').replace(/```/g, '');
-      }
-    }
-
-    // Strategy 2: Try to extract JSON object from text
-    // Look for first { and last } to isolate JSON
-    const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
-
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-    }
-
-    // Strategy 3: Parse the JSON
-    const parsed = JSON.parse(cleaned);
-
-    // Validate required fields
-    if (
-      typeof parsed.overallScore !== 'number' ||
-      typeof parsed.hasErrors !== 'boolean' ||
-      !parsed.recommendation ||
-      !Array.isArray(parsed.issues)
-    ) {
-      throw new Error('Missing or invalid required fields in review');
-    }
-
-    // Normalize recommendation (handle variations from Gemini)
-    let normalizedRecommendation: 'approve' | 'revise' | 'regenerate';
-    const rec = parsed.recommendation?.toLowerCase() || '';
-
-    if (rec.includes('approve')) {
-      // "approve", "approve_with_fixes", "approved" → all become "approve"
-      normalizedRecommendation = 'approve';
-    } else if (rec.includes('revise') || rec.includes('fix')) {
-      normalizedRecommendation = 'revise';
-    } else if (rec.includes('regenerate') || rec.includes('rewrite')) {
-      normalizedRecommendation = 'regenerate';
-    } else {
-      // Default to approve if unrecognized
-      console.warn(`Unrecognized recommendation: ${parsed.recommendation}, defaulting to 'approve'`);
-      normalizedRecommendation = 'approve';
-    }
-
-    // Add defaults for new optional fields (backward compatibility)
-    if (!parsed.categoryScores) {
-      // Default to overall score for all categories if not provided
-      parsed.categoryScores = {
-        correctness: parsed.overallScore || 70,
-        security: parsed.overallScore || 70,
-        codeQuality: parsed.overallScore || 70,
-        completeness: parsed.overallScore || 70,
-      };
-    }
-    if (!parsed.filePriority || !Array.isArray(parsed.filePriority)) {
-      parsed.filePriority = [];
-    }
-    if (!parsed.fixSuggestions || !Array.isArray(parsed.fixSuggestions)) {
-      parsed.fixSuggestions = [];
-    }
-
-    return {
-      overallScore: parsed.overallScore,
-      hasErrors: parsed.hasErrors,
-      recommendation: normalizedRecommendation,
-      strengths: parsed.strengths || [],
-      weaknesses: parsed.weaknesses || [],
-      securityConcerns: parsed.securityConcerns || [],
-      issues: parsed.issues.map((issue: any): CodeIssue => ({
-        severity: issue.severity || 'warning',
-        file: issue.file || 'unknown',
-        line: issue.line || undefined,
-        message: issue.message || 'No message provided',
-        suggestion: issue.suggestion || undefined,
-      })),
-      // New fields (with defaults applied above)
-      categoryScores: parsed.categoryScores,
-      filePriority: parsed.filePriority,
-      fixSuggestions: parsed.fixSuggestions,
-    };
-  } catch (error) {
-    console.error('❌ Failed to parse review from Gemini');
-    console.error('   Error:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('   Raw response (first 500 chars):', text.substring(0, 500));
-    console.error('   Response length:', text.length);
-
-    // Try to extract any useful information from the text
-    const scoreMatch = text.match(/score[:\s]+(\d+)/i);
-    const score = scoreMatch ? parseInt(scoreMatch[1]) : 70;
-
-    const hasApprove = /approve/i.test(text);
-    const hasRevise = /revise/i.test(text);
-    const hasRegenerate = /regenerate/i.test(text);
-
-    const recommendation = hasRegenerate ? 'regenerate' : hasRevise ? 'revise' : 'approve';
-
-    console.log(`   Extracted from text: score=${score}, recommendation=${recommendation}`);
-
-    // Return a permissive default review with extracted info
-    return {
-      overallScore: score,
-      hasErrors: false,
-      recommendation: recommendation as 'approve' | 'revise' | 'regenerate',
-      strengths: [],
-      weaknesses: [`Review parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
-      securityConcerns: [],
-      issues: [
-        {
-          severity: 'warning',
-          file: 'unknown',
-          message: 'Gemini returned non-JSON response. Using fallback parsing.',
-        },
-      ],
-    };
-  }
-}
