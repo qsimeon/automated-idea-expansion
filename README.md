@@ -1,10 +1,10 @@
 # Automated Idea Expansion
 
-An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts, code projects, social media threads, or AI images.
+An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts (with images), code projects, or social media threads.
 
 ## 🎯 Current Status
 
-**Phase 2B Complete!** ✅ Structured Output Architecture + Quality Iteration Loops
+**Phase 2C Complete!** ✅ Unified Content Pipeline + Images as Components + Gemini Integration
 
 ### ✅ What's Working:
 
@@ -21,22 +21,41 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Outputs viewer with format-specific displays
 - ✅ Delete functionality for both ideas and outputs
 
-#### **Phase 4: Multi-Agent Pipeline (LangGraph)**
+#### **Phase 4: Multi-Agent Pipeline (LangGraph) - NEW ARCHITECTURE**
 - ✅ **Judge Agent** - Evaluates and selects best idea (GPT-5 Nano)
 - ✅ **Router Agent** - Decides optimal output format (GPT-5 Nano)
-- ✅ **Creator Agents** - Generates content in 4 formats:
-  - 📝 **Blog Posts** - Long-form markdown articles
-  - 🦣 **Twitter/Mastodon Threads** - 500-char social media posts
-  - 💻 **Code Projects** - Functional code with README (publishes to GitHub)
-  - 🎨 **AI Images** - Generated via fal.ai/HuggingFace
-- ✅ **5-Stage Code Creator V2** (Advanced):
-  - **Planning Agent** - Creates quality rubrics, implementation steps (GPT-5 Nano)
-  - **Generation Agent** - Creates files with structured outputs (Claude Sonnet 4.5)
-  - **Critic Agent** - Reviews against rubrics (GPT-5 Nano)
-  - **Fixer Agent** - Targeted file regeneration (Claude Sonnet 4.5)
-  - **Quality Iteration Loop** - Up to 5 cycles until score ≥75
+- ✅ **Creator Agents** - Generates content in **3 formats**:
+  - 📝 **Blog Posts V2** - Multi-stage pipeline with optional images (1-3):
+    - Planning (Gemini Flash) → sections, tone, image specs
+    - Generation (Claude Haiku) → markdown + images with captions
+    - Review (Gemini Flash) → quality scoring
+  - 🦣 **Mastodon Threads** - 500-char social posts with optional hero image
+  - 💻 **Code Projects V2** - 5-stage pipeline with iteration:
+    - Planning (GPT-5 Nano) → quality rubrics, implementation steps
+    - Generation (Claude Sonnet 4.5) → all files with structured outputs
+    - Review (GPT-5 Nano) → actionable feedback
+    - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
+    - Up to 5 cycles until score ≥75
+
+**Note:** Images are now **components** within blogs/threads, not standalone formats.
 
 ### 🎉 Recent Accomplishments:
+
+#### **Unified Content Pipeline (Jan 2026) - LATEST**
+- ✅ **Images as Components** - Removed 'image' as standalone format
+  - Images now generated as subcomponents within blogs/threads
+  - Context-aware generation (images understand content)
+  - Up to 3 images per blog with captions and alt text
+- ✅ **Blog Creator V2** - Multi-stage pipeline:
+  - Planning → Generation (Text + Images) → Review
+  - Uses Gemini Flash for planning/review (50% cost savings)
+  - Uses Claude Haiku for text generation (superior writing quality)
+- ✅ **Google Gemini Integration**:
+  - Created model-factory.ts for centralized model selection
+  - Gemini Flash for planning/review ($0.075/1M vs $0.15/1M = 50% savings)
+  - Automatic fallback to GPT-4o-mini if GOOGLE_API_KEY not set
+- ✅ **Enhanced Schemas** - BlogPlan, BlogDraft, BlogReview, ImageSpec, GeneratedImage
+- ✅ **GitHub Repo Links** - Added "View on GitHub" buttons to code output cards
 
 #### **Structured Outputs Migration (Jan 2026)**
 - ✅ Implemented Zod schemas across entire pipeline

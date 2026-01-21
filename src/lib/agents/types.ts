@@ -40,8 +40,9 @@ export const AgentState = Annotation.Root({
   // ROUTER AGENT OUTPUTS
   // ============================================================
 
-  // Output format: blog_post | twitter_thread | github_repo | image
-  chosenFormat: Annotation<'blog_post' | 'twitter_thread' | 'github_repo' | 'image' | null>,
+  // Output format: blog_post | twitter_thread | github_repo
+  // Note: Images are now components of blogs/threads, not standalone formats
+  chosenFormat: Annotation<'blog_post' | 'twitter_thread' | 'github_repo' | null>,
 
   // Why this format was chosen
   formatReasoning: Annotation<string>,
@@ -132,4 +133,142 @@ export interface AIImage {
   model: string; // Which model generated it (flux, sdxl, etc)
   width: number;
   height: number;
+}
+
+// ===== ENHANCED CONTENT PIPELINE SCHEMAS =====
+
+/**
+ * IMAGE SCHEMAS
+ * Images are now subcomponents of blogs/threads, not standalone formats
+ */
+
+export interface ImageSpec {
+  placement: 'hero' | 'inline' | 'end' | string; // Where to place image
+  concept: string; // What to visualize
+  style?: string; // Art style (optional)
+  aspectRatio?: '16:9' | '1:1' | '4:3'; // Default: 16:9
+}
+
+export interface GeneratedImage {
+  imageUrl: string; // URL or data URL
+  caption: string; // Image caption/alt text
+  prompt: string; // Prompt used to generate
+  placement: string; // Where it goes in content
+  model: string; // Which model generated it
+  width: number;
+  height: number;
+}
+
+/**
+ * BLOG SCHEMAS
+ * Multi-stage pipeline: Plan → Generate → Review
+ */
+
+export interface BlogPlan {
+  title: string;
+  sections: string[]; // ["Introduction", "Core Concepts", ...]
+  tone: string; // "educational", "casual", "technical"
+  targetWordCount: number; // 1000-2000
+  includeImages: boolean;
+  imageSpecs: ImageSpec[]; // Where and what images to generate
+  qualityRubric: ContentQualityRubric;
+}
+
+export interface BlogDraft {
+  title: string;
+  markdown: string; // Full markdown content
+  images: GeneratedImage[]; // Generated images with placement
+  wordCount: number;
+  readingTimeMinutes: number;
+  sections: string[]; // Actual sections created
+}
+
+export interface BlogReview {
+  overallScore: number; // 0-100
+  categoryScores: {
+    clarity: number; // How clear is the writing?
+    accuracy: number; // Technically correct?
+    engagement: number; // Engaging to read?
+    imageRelevance: number; // Images enhance content?
+  };
+  recommendation: 'approve' | 'revise' | 'regenerate';
+  strengths: string[];
+  improvements: string[];
+}
+
+/**
+ * THREAD SCHEMAS
+ * Multi-stage pipeline: Plan → Generate → Review
+ */
+
+export interface ThreadPlan {
+  hook: string; // Opening post (most important)
+  threadLength: number; // 3-10 posts
+  includeHeroImage: boolean; // Image for first post
+  imageSpec?: ImageSpec; // Hero image spec
+  keyPoints: string[]; // Main points to cover
+  tone: string; // "informative", "entertaining", etc.
+  qualityRubric: ContentQualityRubric;
+}
+
+export interface ThreadDraft {
+  posts: Array<{
+    order: number;
+    text: string; // Max 500 chars
+    characterCount: number;
+  }>;
+  heroImage?: GeneratedImage; // Optional hero image for post 1
+  totalPosts: number;
+}
+
+export interface ThreadReview {
+  overallScore: number;
+  categoryScores: {
+    hookStrength: number; // First post quality
+    flow: number; // Logical progression
+    engagement: number;
+    charCountCompliance: number; // All posts ≤500 chars?
+  };
+  recommendation: 'approve' | 'revise' | 'regenerate';
+  strengths: string[];
+  improvements: string[];
+}
+
+/**
+ * QUALITY RUBRIC (Shared across content types)
+ */
+
+export interface ContentQualityRubric {
+  dimensions: {
+    [key: string]: {
+      weight: number; // 0.0-1.0
+      criteria: string[];
+    };
+  };
+}
+
+/**
+ * STATE OBJECTS (like CodeCreationState but for content)
+ */
+
+export interface BlogCreationState {
+  idea: Idea;
+  plan: BlogPlan | null;
+  draft: BlogDraft | null;
+  review: BlogReview | null;
+  attempts: number;
+  maxAttempts: number;
+  errors: string[];
+  totalTokens: number;
+}
+
+export interface ThreadCreationState {
+  idea: Idea;
+  plan: ThreadPlan | null;
+  draft: ThreadDraft | null;
+  review: ThreadReview | null;
+  attempts: number;
+  maxAttempts: number;
+  errors: string[];
+  totalTokens: number;
 }

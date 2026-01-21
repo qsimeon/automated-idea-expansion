@@ -1,111 +1,157 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatAnthropic } from '@langchain/anthropic';
-import type { AIImage } from '../types';
+import { createModel, ModelRecommendations } from '../model-factory';
+import type { AIImage, ImageSpec, GeneratedImage } from '../types';
 
 /**
- * IMAGE CREATOR
+ * IMAGE GENERATION SUBAGENT
  *
- * Purpose: Generate AI image from an idea
+ * NOT a standalone creator - used as subcomponent by blog/thread creators
  *
- * Two-step process:
- * 1. LLM creates detailed image generation prompt from idea
- * 2. Image API generates the actual image
+ * This module provides modular image generation functions:
+ * - createImagePrompt: Generate detailed prompt from concept
+ * - generateImage: Create actual image via API
+ * - generateImageCaption: Create caption for image
+ * - generateImageForContent: Complete pipeline
+ *
+ * Can also be used standalone for 'image' format (legacy support)
  *
  * Supported APIs (in priority order):
  * - fal.ai (fast, generous free tier, high quality)
  * - Hugging Face Inference API (free tier)
  * - Replicate (paid but cheapest)
  */
+
+/**
+ * LEGACY: Standalone image creator (for 'image' format)
+ * Maintained for backward compatibility
+ */
 export async function createAIImage(idea: any): Promise<{
   content: AIImage;
   tokensUsed: number;
 }> {
-  // Step 1: Generate image prompt from idea using LLM
-  const { prompt, tokensUsed } = await generateImagePrompt(idea);
+  // Convert idea to ImageSpec
+  const spec: ImageSpec = {
+    placement: 'standalone',
+    concept: idea.title,
+    style: 'professional illustration',
+    aspectRatio: '16:9',
+  };
 
-  // Step 2: Generate image using API
-  const imageResult = await generateImage(prompt);
+  // Generate using new pipeline
+  const generatedImage = await generateImageForContent(spec);
 
   return {
     content: {
-      prompt,
-      imageUrl: imageResult.url,
-      model: imageResult.model,
-      width: imageResult.width,
-      height: imageResult.height,
+      prompt: generatedImage.prompt,
+      imageUrl: generatedImage.imageUrl,
+      model: generatedImage.model,
+      width: generatedImage.width,
+      height: generatedImage.height,
     },
-    tokensUsed,
+    tokensUsed: 0, // Estimate if needed
   };
 }
 
 /**
- * Use LLM to create a detailed image generation prompt
+ * NEW: Generate detailed image prompt from concept
+ * Used by blog/thread creators to create context-aware images
  */
-async function generateImagePrompt(idea: any): Promise<{
-  prompt: string;
-  tokensUsed: number;
-}> {
-  const systemPrompt = `You are an expert at creating prompts for AI image generation.
+export async function createImagePrompt(
+  spec: ImageSpec,
+  contentContext?: string // Optional context from blog/thread
+): Promise<string> {
+  const model = createModel(ModelRecommendations.imagePrompts, 0.9); // High creativity
 
-Convert this idea into a detailed, vivid image generation prompt.
+  const prompt = `Create a detailed image generation prompt for this concept:
 
-Idea Details:
-Title: ${idea.title}
-Description: ${idea.description || 'No description'}
-Key Points: ${JSON.stringify(idea.bullets) || 'None'}
+CONCEPT: ${spec.concept}
+STYLE: ${spec.style || 'professional illustration'}
+PLACEMENT: ${spec.placement} ${contentContext ? `in content about: "${contentContext.substring(0, 200)}..."` : ''}
 
-Guidelines for the image prompt:
-- Be SPECIFIC about style (e.g., "digital art", "oil painting", "3D render", "photograph")
-- Describe composition, lighting, colors, mood
-- Include artistic references if relevant (e.g., "in the style of...")
-- Mention technical details (e.g., "ultra detailed", "8K", "cinematic lighting")
-- Keep it 2-4 sentences, highly descriptive
+Requirements:
+- Be specific about composition, lighting, colors, mood
+- Include style references if appropriate
+- Make it vivid and descriptive
+- Optimize for FLUX Schnell or Stable Diffusion
 - Focus on VISUAL elements, not abstract concepts
 
 Examples of good prompts:
 - "A futuristic cityscape at sunset, neon lights reflecting on wet streets, cyberpunk aesthetic, highly detailed digital art, vibrant purple and blue tones"
 - "Abstract visualization of neural networks, flowing data streams in electric blue and gold, dark background, ethereal glow, digital art style"
-- "Cozy home office setup with plants, warm natural lighting through window, minimalist Scandinavian design, soft focus photography"
 
-Respond with ONLY the image prompt (no JSON, no explanation).`;
+Return ONLY the prompt text (no JSON, no explanation).`;
 
-  // Try OpenAI first
-  try {
-    const model = new ChatOpenAI({
-      modelName: 'gpt-4o-mini',
-      temperature: 0.9, // High creativity for prompt generation
-      maxTokens: 200,
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+  const response = await model.invoke(prompt);
+  return response.content.toString().trim();
+}
 
-    const response = await model.invoke(systemPrompt);
-    return {
-      prompt: response.content.toString().trim(),
-      tokensUsed: response.usage_metadata?.total_tokens || 0,
-    };
-  } catch (openaiError) {
-    console.warn('OpenAI failed for prompt generation, falling back to Anthropic:', openaiError);
+/**
+ * NEW: Generate caption for image
+ * Creates concise, descriptive alt text
+ */
+export async function generateImageCaption(
+  imagePrompt: string,
+  concept: string
+): Promise<string> {
+  const model = createModel('gemini-flash', 0.7); // Fast, cheap
 
-    // Fallback to Anthropic
-    const model = new ChatAnthropic({
-      modelName: 'claude-3-5-haiku-20241022',
-      temperature: 0.9,
-      maxTokens: 200,
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+  const prompt = `Create a concise, descriptive caption for this image:
 
-    const response = await model.invoke(systemPrompt);
-    return {
-      prompt: response.content.toString().trim(),
-      tokensUsed: response.usage_metadata?.total_tokens || 0,
-    };
-  }
+IMAGE PROMPT: ${imagePrompt}
+CONCEPT: ${concept}
+
+Return a single sentence caption (< 100 chars) suitable for alt text and display.
+No quotes, just the caption text.`;
+
+  const response = await model.invoke(prompt);
+  return response.content.toString().trim();
+}
+
+/**
+ * NEW: Complete image generation pipeline
+ * This is the main function that blog/thread creators should use
+ */
+export async function generateImageForContent(
+  spec: ImageSpec,
+  contentContext?: string
+): Promise<GeneratedImage> {
+  console.log(`🎨 Generating image for: ${spec.concept}`);
+
+  // Step 1: Create detailed prompt
+  const imagePrompt = await createImagePrompt(spec, contentContext);
+  console.log(`   📝 Prompt: ${imagePrompt.substring(0, 60)}...`);
+
+  // Step 2: Generate image
+  const { url, model, width, height } = await generateImage(
+    imagePrompt,
+    spec.aspectRatio || '16:9'
+  );
+  console.log(`   ✅ Image generated: ${model}`);
+
+  // Step 3: Generate caption
+  const caption = await generateImageCaption(imagePrompt, spec.concept);
+  console.log(`   💬 Caption: ${caption}`);
+
+  return {
+    imageUrl: url,
+    caption,
+    prompt: imagePrompt,
+    placement: spec.placement,
+    model,
+    width,
+    height,
+  };
 }
 
 /**
  * Generate image using available APIs (in priority order)
+ *
+ * @param prompt - The image generation prompt
+ * @param aspectRatio - Desired aspect ratio (default: '16:9')
  */
-async function generateImage(prompt: string): Promise<{
+export async function generateImage(
+  prompt: string,
+  aspectRatio: '16:9' | '1:1' | '4:3' = '16:9'
+): Promise<{
   url: string;
   model: string;
   width: number;
@@ -114,7 +160,7 @@ async function generateImage(prompt: string): Promise<{
   // Try fal.ai first (fast + generous free tier)
   if (process.env.FAL_KEY) {
     try {
-      return await generateWithFal(prompt);
+      return await generateWithFal(prompt, aspectRatio);
     } catch (falError) {
       console.warn('fal.ai failed, trying next option:', falError);
     }
@@ -123,7 +169,7 @@ async function generateImage(prompt: string): Promise<{
   // Try Hugging Face (free tier)
   if (process.env.HUGGINGFACE_API_KEY) {
     try {
-      return await generateWithHuggingFace(prompt);
+      return await generateWithHuggingFace(prompt, aspectRatio);
     } catch (hfError) {
       console.warn('Hugging Face failed, trying next option:', hfError);
     }
@@ -132,7 +178,7 @@ async function generateImage(prompt: string): Promise<{
   // Try Replicate (paid but cheap)
   if (process.env.REPLICATE_API_TOKEN) {
     try {
-      return await generateWithReplicate(prompt);
+      return await generateWithReplicate(prompt, aspectRatio);
     } catch (repError) {
       console.warn('Replicate failed:', repError);
     }
@@ -144,12 +190,22 @@ async function generateImage(prompt: string): Promise<{
 /**
  * Generate image with fal.ai (FLUX Schnell - fast & high quality)
  */
-async function generateWithFal(prompt: string): Promise<{
+async function generateWithFal(
+  prompt: string,
+  aspectRatio: '16:9' | '1:1' | '4:3' = '16:9'
+): Promise<{
   url: string;
   model: string;
   width: number;
   height: number;
 }> {
+  // Map aspect ratio to fal.ai image size
+  const sizeMap = {
+    '16:9': 'landscape_16_9',
+    '1:1': 'square',
+    '4:3': 'landscape_4_3',
+  };
+
   const response = await fetch('https://fal.run/fal-ai/flux/schnell', {
     method: 'POST',
     headers: {
@@ -158,7 +214,7 @@ async function generateWithFal(prompt: string): Promise<{
     },
     body: JSON.stringify({
       prompt,
-      image_size: 'landscape_16_9',
+      image_size: sizeMap[aspectRatio],
       num_images: 1,
     }),
   });
@@ -180,8 +236,12 @@ async function generateWithFal(prompt: string): Promise<{
 
 /**
  * Generate image with Hugging Face (FLUX or Stable Diffusion)
+ * Note: HF Inference API doesn't support custom aspect ratios, always returns 1024x1024
  */
-async function generateWithHuggingFace(prompt: string): Promise<{
+async function generateWithHuggingFace(
+  prompt: string,
+  aspectRatio: '16:9' | '1:1' | '4:3' = '16:9' // Accepted but not used
+): Promise<{
   url: string;
   model: string;
   width: number;
@@ -225,7 +285,10 @@ async function generateWithHuggingFace(prompt: string): Promise<{
 /**
  * Generate image with Replicate (FLUX Dev - highest quality)
  */
-async function generateWithReplicate(prompt: string): Promise<{
+async function generateWithReplicate(
+  prompt: string,
+  aspectRatio: '16:9' | '1:1' | '4:3' = '16:9'
+): Promise<{
   url: string;
   model: string;
   width: number;
@@ -243,7 +306,7 @@ async function generateWithReplicate(prompt: string): Promise<{
       input: {
         prompt,
         num_outputs: 1,
-        aspect_ratio: '16:9',
+        aspect_ratio: aspectRatio,
         output_format: 'png',
       },
     }),

@@ -11,11 +11,13 @@ import type { AgentStateType } from './types';
  * 1. Receives the selected idea from Judge Agent
  * 2. Analyzes the idea's content and characteristics
  * 3. Decides which format would work best:
- *    - Blog: Deep explanations, tutorials, analyses
- *    - Mastodon: Quick insights, hot takes, announcements
+ *    - Blog: Deep explanations, tutorials, analyses (can include images)
+ *    - Mastodon: Quick insights, hot takes, announcements (can include hero image)
  *    - Code: Technical demos, implementations, tools
- *    - Image: Visual concepts, artistic ideas, descriptive scenes
  * 4. Returns format choice with reasoning
+ *
+ * Note: Images are now COMPONENTS of blogs/threads, not a standalone format.
+ * The router only chooses between: blog_post, twitter_thread, github_repo
  *
  * Models used: GPT-4o-mini (primary) or Claude Haiku (fallback)
  */
@@ -156,14 +158,16 @@ Strong recommendation: Choose 'github_repo' for technical ideas that benefit fro
 
 Available formats:
 
-1. **blog_post** - Long-form article (1000-2000 words)
+1. **blog_post** - Long-form article (1000-2000 words) with optional images
    Best for: Deep explanations, conceptual tutorials, thought pieces, how-things-work guides
    Examples: "Understanding X", "How Y works under the hood", "The philosophy of Z"
+   Features: Can include up to 3 images with captions for visual concepts
    ⚠️ NOT for: Technical implementations, ML experiments, coding projects
 
-2. **twitter_thread** - Social media thread (5-10 posts, 500 chars each)
+2. **twitter_thread** - Social media thread (5-10 posts, 500 chars each) with optional hero image
    Best for: Quick insights, hot takes, step-by-step tips, announcements, concise ideas
    Examples: "5 tips for X", "Thread on Y", "Quick thoughts on Z"
+   Features: Can include a hero image for the first post
    ⚠️ NOT for: Complex technical ideas that need code
 
 3. **github_repo** - Interactive code project (Python/JS/TS app, notebook, or CLI tool)
@@ -173,11 +177,6 @@ Available formats:
              "Train model for X", "Contrastive learning experiment", "CLI for Y"
    ✅ PREFER THIS for ML/AI research, coding projects, technical explorations
    ✅ Code provides hands-on value - choose when in doubt between code and blog
-
-4. **image** - AI-generated image
-   Best for: Visual concepts, artistic ideas, descriptive scenes, metaphors, design mockups
-   Examples: "Visualize X", "Artistic representation of Y", "Imagining Z"
-   ⚠️ NOT for: Technical or coding ideas
 
 Analyze this idea:
 
@@ -189,21 +188,22 @@ DECISION RULES:
 1. If idea contains ML/AI keywords → strongly prefer 'github_repo' (code exploration)
 2. If idea says "build X" or "implement Y" → 'github_repo' (tool/demo)
 3. If idea is hands-on/experimental → 'github_repo' (interactive value)
-4. If idea is purely conceptual/explanatory → 'blog_post'
+4. If idea is purely conceptual/explanatory → 'blog_post' (images will be auto-generated if needed)
 5. If idea is quick tips/insights → 'twitter_thread'
-6. If idea is visual description → 'image'
+6. If idea is visual/artistic → 'blog_post' (the blog creator will include relevant images)
 7. When uncertain between code and blog → choose code (more valuable for technical ideas)
 
 Respond with ONLY valid JSON in this exact format:
 {
-  "format": "<blog_post|twitter_thread|github_repo|image>",
+  "format": "<blog_post|twitter_thread|github_repo>",
   "reasoning": "<2-3 sentences explaining why this format is best>"
 }
 
 Important:
 - Choose the format that would create the MOST value for this specific idea
 - Be aggressive about choosing 'github_repo' for technical ideas
-- Code is better than explanation for ML/research/implementation ideas`;
+- Code is better than explanation for ML/research/implementation ideas
+- Images are automatically included in blogs/threads when relevant - don't let visual needs influence format choice`;
 }
 
 /**
@@ -260,7 +260,7 @@ function parseRouterResponse(response: {
   const parsed = JSON.parse(jsonMatch[0]);
 
   // Validate format
-  const validFormats = ['blog_post', 'twitter_thread', 'github_repo', 'image'];
+  const validFormats = ['blog_post', 'twitter_thread', 'github_repo'];
   if (!validFormats.includes(parsed.format)) {
     throw new Error(`Invalid format: ${parsed.format}. Must be one of: ${validFormats.join(', ')}`);
   }
@@ -270,7 +270,7 @@ function parseRouterResponse(response: {
   }
 
   return {
-    chosenFormat: parsed.format as 'blog_post' | 'twitter_thread' | 'github_repo' | 'image',
+    chosenFormat: parsed.format as 'blog_post' | 'twitter_thread' | 'github_repo',
     formatReasoning: parsed.reasoning,
     tokensUsed: tokens,
   };

@@ -122,8 +122,7 @@ export default function IdeasPage() {
           const formatEmoji =
             data.content?.format === 'blog_post' ? '📝' :
             data.content?.format === 'twitter_thread' ? '🦣' :
-            data.content?.format === 'github_repo' ? '💻' :
-            data.content?.format === 'image' ? '🎨' : '✨';
+            data.content?.format === 'github_repo' ? '💻' : '✨';
 
           setSuccess(
             `${formatEmoji} Success! Generated ${data.content?.format || 'content'}: ${data.content?.preview || 'View it now!'}`
@@ -312,8 +311,7 @@ export default function IdeasPage() {
                             • Format: {
                               idea.output_format === 'blog_post' ? '📝 Blog' :
                               idea.output_format === 'twitter_thread' ? '🦣 Twitter Thread' :
-                              idea.output_format === 'github_repo' ? '💻 Code' :
-                              idea.output_format === 'image' ? '🎨 Image' : idea.output_format
+                              idea.output_format === 'github_repo' ? '💻 Code' : idea.output_format
                             }
                           </span>
                         )}

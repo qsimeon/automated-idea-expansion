@@ -1,8 +1,7 @@
 import type { AgentStateType } from './types';
-import { createBlogPost } from './creators/blog-creator';
+import { createBlogV2 } from './creators/blog-creator-v2'; // V2: Multi-stage with images
 import { createMastodonThread } from './creators/mastodon-creator';
 import { createCodeProjectV2 } from './creators/code/code-creator-v2'; // Multi-stage code creator
-import { createAIImage } from './creators/image-creator';
 import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publisher';
 
 /**
@@ -15,10 +14,11 @@ import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publ
  * - The chosen format (from Router)
  *
  * It delegates to the format-specific creator:
- * - blog_post → blogCreator
- * - twitter_thread → mastodonCreator
- * - github_repo → codeCreator-v2
- * - image → imageCreator
+ * - blog_post → blogCreator-v2 (with plan → generate → review + images)
+ * - twitter_thread → mastodonCreator (can include hero image)
+ * - github_repo → codeCreator-v2 (with plan → generate → review → iterate)
+ *
+ * Note: Images are now COMPONENTS of blogs/threads, not standalone formats
  */
 export async function creatorAgent(
   state: AgentStateType
@@ -44,8 +44,8 @@ export async function creatorAgent(
   try {
     switch (chosenFormat) {
       case 'blog_post':
-        console.log('Creating blog post...');
-        const blogResult = await createBlogPost(selectedIdea);
+        console.log('Creating blog post with multi-stage pipeline (V2)...');
+        const blogResult = await createBlogV2(selectedIdea);
         return {
           generatedContent: {
             format: 'blog_post',
@@ -89,17 +89,6 @@ export async function creatorAgent(
             publishResult,
           },
           tokensUsed: codeResult.tokensUsed,
-        };
-
-      case 'image':
-        console.log('Creating AI image...');
-        const imageResult = await createAIImage(selectedIdea);
-        return {
-          generatedContent: {
-            format: 'image',
-            ...imageResult.content,
-          },
-          tokensUsed: imageResult.tokensUsed,
         };
 
       default:

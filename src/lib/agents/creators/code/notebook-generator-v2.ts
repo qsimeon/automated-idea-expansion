@@ -137,9 +137,28 @@ CRITICAL:
 - Include comments in code cells
 - Make markdown cells educational and clear
 
-Return a list of cells. Each cell has:
-- type: "markdown" or "code"
-- content: Array of strings (one per line)`;
+You must respond with valid JSON matching this exact structure:
+{
+  "cells": [
+    {
+      "type": "markdown",
+      "content": ["# Title", "Overview text here"]
+    },
+    {
+      "type": "code",
+      "content": ["import numpy as np", "import matplotlib.pyplot as plt"]
+    }
+  ],
+  "requiredPackages": ["numpy", "matplotlib", "pandas"]
+}
+
+IMPORTANT:
+- cells: array of cell objects
+- Each cell has "type" (either "markdown" or "code") and "content" (array of strings)
+- requiredPackages: array of package names needed (use pip package names)
+- Create at least 5-10 cells total
+- First cell should always be markdown with title
+- Second cell should always be code with imports`;
 }
 
 /**

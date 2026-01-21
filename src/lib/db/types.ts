@@ -42,7 +42,7 @@ export interface Execution {
   selected_idea_id: string | null;
   judge_reasoning: string | null;
   judge_score: number | null;
-  format_chosen: 'blog_post' | 'twitter_thread' | 'github_repo' | 'image' | null;
+  format_chosen: 'blog_post' | 'twitter_thread' | 'github_repo' | null;
   format_reasoning: string | null;
   status: 'running' | 'completed' | 'failed' | 'partial';
   error_message: string | null;
@@ -58,7 +58,7 @@ export interface Output {
   execution_id: string;
   user_id: string;
   idea_id: string | null;
-  format: 'blog_post' | 'twitter_thread' | 'github_repo' | 'image';
+  format: 'blog_post' | 'twitter_thread' | 'github_repo';
   content: any; // JSONB
   published: boolean;
   publication_url: string | null;
