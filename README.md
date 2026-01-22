@@ -27,7 +27,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ **Creator Agents** - Generates content in **2 formats**:
   - 📝 **Blog Posts V2/V3** - Multi-stage pipeline with images + social share:
     - Planning (GPT-4o-mini) → sections, tone, image specs
-    - Generation (Claude Sonnet) → content + 1-3 images with captions
+    - Generation (Claude Haiku 4.5) → content + 1-3 images with captions
     - Social Share (GPT-4o-mini) → auto-generated tweet (280 chars max, 2-3 hashtags)
     - Review (GPT-4o-mini) → quality scoring
     - **V3 Available:** Cell-based architecture (atomic content blocks, not markdown)

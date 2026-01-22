@@ -194,7 +194,7 @@ async function callOpenAI(prompt: string): Promise<{ result: z.infer<typeof Rout
  */
 async function callAnthropic(prompt: string): Promise<{ result: z.infer<typeof RouterResponseSchema>; tokens: number }> {
   const model = new ChatAnthropic({
-    modelName: 'claude-3-5-haiku-20241022',
+    modelName: 'claude-haiku-4-5-20251001',
     temperature: 0.5,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });

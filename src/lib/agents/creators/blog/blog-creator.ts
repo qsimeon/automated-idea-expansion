@@ -33,7 +33,7 @@ import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
  *
  * Models:
  * - GPT-4o-mini: Planning, review
- * - Claude Sonnet: Content generation (best writing quality)
+ * - Claude Haiku 4.5: Content generation (best writing quality)
  */
 
 const BlogPlanSchema = z.object({
@@ -215,7 +215,7 @@ async function generateBlogCells(
   logger: ReturnType<typeof createLogger>
 ): Promise<BlogGeneration> {
   const model = new ChatAnthropic({
-    modelName: 'claude-3-5-sonnet-20241022',
+    modelName: 'claude-haiku-4-5-20251001',
     temperature: 0.8,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });

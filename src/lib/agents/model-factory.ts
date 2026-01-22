@@ -9,15 +9,15 @@ import { ChatAnthropic } from '@langchain/anthropic';
  *
  * Model Recommendations:
  * - Planning: GPT-4o-mini (fast, cheap, good at structure)
- * - Text Generation: Claude Haiku (excellent writing quality)
+ * - Text Generation: Claude Haiku 4.5 (excellent writing quality)
  * - Image Prompts: GPT-4o-mini (creative prompt engineering)
  * - Review: GPT-4o-mini (fast, cost-effective validation)
- * - Coding: Claude Sonnet (best at code generation)
+ * - Coding: Claude Sonnet 4.5 (best at code generation)
  *
  * Cost Comparison (per 1M tokens):
  * - GPT-4o-mini: ~$0.15 input / $0.60 output
- * - Claude Haiku: ~$0.25 input / $1.25 output
- * - Claude Sonnet: ~$3.00 input / $15.00 output
+ * - Claude Haiku 4.5: ~$0.25 input / $1.25 output
+ * - Claude Sonnet 4.5: ~$3.00 input / $15.00 output
  */
 
 export type ModelType =
@@ -36,7 +36,7 @@ export function createModel(type: ModelType, temperature: number = 0.7) {
 
     case 'claude-haiku':
       return new ChatAnthropic({
-        modelName: 'claude-3-5-haiku-20241022',
+        modelName: 'claude-haiku-4-5-20251001',
         temperature,
         apiKey: process.env.ANTHROPIC_API_KEY,
       });
