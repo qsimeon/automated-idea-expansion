@@ -166,6 +166,34 @@ function BlogViewer({ content }: { content: any }) {
         </div>
       </div>
 
+      {/* Featured Image (if first image exists) */}
+      {content.images && content.images.length > 0 && content.images[0] && (
+        <div style={{
+          marginBottom: '30px',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          border: '1px solid #e5e7eb'
+        }}>
+          <img
+            src={content.images[0].imageUrl}
+            alt={content.images[0].caption}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
+          {content.images[0].caption && (
+            <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
+              <p style={{
+                margin: 0,
+                fontSize: '14px',
+                color: '#6b7280',
+                fontStyle: 'italic'
+              }}>
+                {content.images[0].caption}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div
         style={{
           fontSize: '18px',
@@ -176,6 +204,76 @@ function BlogViewer({ content }: { content: any }) {
           __html: parseMarkdown(content.markdown),
         }}
       />
+
+      {/* Social Media Share Section */}
+      {content.socialPost && (
+        <div style={{
+          marginTop: '40px',
+          padding: '20px',
+          backgroundColor: '#f9fafb',
+          borderRadius: '12px',
+          border: '1px solid #e5e7eb'
+        }}>
+          <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '600' }}>
+            📱 Share on Social Media
+          </h3>
+          <div style={{
+            padding: '16px',
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            marginBottom: '12px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <p style={{ margin: 0, fontSize: '15px', lineHeight: '1.5' }}>
+              {content.socialPost.content}
+            </p>
+            <div style={{ marginTop: '8px' }}>
+              {content.socialPost.hashtags.map((tag: string) => (
+                <span key={tag} style={{
+                  display: 'inline-block',
+                  marginRight: '8px',
+                  color: '#1d9bf0',
+                  fontSize: '14px'
+                }}>
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+          {content.socialPost.imageUrl && (
+            <img
+              src={content.socialPost.imageUrl}
+              alt={content.socialPost.imageCaption || 'Social media image'}
+              style={{
+                width: '100%',
+                maxWidth: '500px',
+                height: 'auto',
+                borderRadius: '8px',
+                marginBottom: '12px'
+              }}
+            />
+          )}
+          <button
+            onClick={() => {
+              const text = `${content.socialPost.content}\n\n${content.socialPost.hashtags.map((t: string) => `#${t}`).join(' ')}`;
+              navigator.clipboard.writeText(text);
+              alert('Copied to clipboard!');
+            }}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#1d9bf0',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600'
+            }}
+          >
+            📋 Copy Tweet
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -360,6 +458,17 @@ function parseMarkdown(markdown: string): string {
 
   // Inline code
   html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+
+  // Images with proper styling (must come before links to avoid conflict)
+  html = html.replace(
+    /!\[(.*?)\]\((.*?)\)/g,
+    '<div style="margin: 30px 0; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">' +
+      '<img src="$2" alt="$1" style="width: 100%; height: auto; display: block;" />' +
+      '<div style="padding: 12px 16px; background-color: #f9fafb;">' +
+        '<p style="margin: 0; font-size: 14px; color: #6b7280; font-style: italic;">$1</p>' +
+      '</div>' +
+    '</div>'
+  );
 
   // Links
   html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');

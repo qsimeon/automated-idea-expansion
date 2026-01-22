@@ -42,9 +42,10 @@ export const AgentState = Annotation.Root({
   // ROUTER AGENT OUTPUTS
   // ============================================================
 
-  // Output format: blog_post | twitter_thread | github_repo
-  // Note: Images are now components of blogs/threads, not standalone formats
-  chosenFormat: Annotation<'blog_post' | 'twitter_thread' | 'github_repo' | null>,
+  // Output format: blog_post | github_repo
+  // Note: Images and social posts are components of blogs, not standalone formats
+  // Legacy: twitter_thread supported for backward compatibility but no longer created
+  chosenFormat: Annotation<'blog_post' | 'github_repo' | null>,
 
   // Why this format was chosen
   formatReasoning: Annotation<string>,

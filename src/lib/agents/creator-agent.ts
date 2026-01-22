@@ -1,7 +1,6 @@
 import type { AgentStateType } from './types';
 import type { Logger } from '../logging/logger';
-import { createBlogV2 } from './creators/blog-creator-v2'; // V2: Multi-stage with images
-import { createMastodonThreadV2 } from './creators/mastodon-creator-v2'; // V2: Multi-stage with hero image
+import { createBlogV2 } from './creators/blog-creator-v2'; // V2: Multi-stage with images and social share
 import { createCodeProjectV2 } from './creators/code/code-creator-v2'; // Multi-stage code creator
 import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publisher';
 
@@ -15,11 +14,10 @@ import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publ
  * - The chosen format (from Router)
  *
  * It delegates to the format-specific creator:
- * - blog_post → blogCreator-v2 (with plan → generate → review + images)
- * - twitter_thread → mastodonCreator-v2 (with plan → generate → review + hero image)
+ * - blog_post → blogCreator-v2 (with plan → generate → review + images + social share)
  * - github_repo → codeCreator-v2 (with plan → generate → review → iterate)
  *
- * Note: Images are now COMPONENTS of blogs/threads, not standalone formats
+ * Note: Images and social posts are COMPONENTS of blogs, not standalone formats
  * Philosophy: "Schemas all the way down" - all creators use structured outputs with Zod
  */
 export async function creatorAgent(
@@ -64,7 +62,7 @@ export async function creatorAgent(
   try {
     switch (chosenFormat) {
       case 'blog_post':
-        logger.info('Delegating to blog creator (V2) - multi-stage pipeline with images');
+        logger.info('Delegating to blog creator (V2) - multi-stage pipeline with images and social share');
         const blogResult = await createBlogV2(selectedIdea);
         logger.info('Blog creator completed successfully', {
           hasContent: !!blogResult.content,
@@ -73,19 +71,6 @@ export async function creatorAgent(
           generatedContent: {
             format: 'blog_post',
             ...blogResult.content,
-          },
-        };
-
-      case 'twitter_thread':
-        logger.info('Delegating to mastodon creator (V2) - multi-stage pipeline with hero image');
-        const mastodonResult = await createMastodonThreadV2(selectedIdea);
-        logger.info('Mastodon creator completed successfully', {
-          hasContent: !!mastodonResult.content,
-        });
-        return {
-          generatedContent: {
-            format: 'twitter_thread',
-            ...mastodonResult.content,
           },
         };
 

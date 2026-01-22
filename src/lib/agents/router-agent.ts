@@ -8,7 +8,7 @@ import { z } from 'zod';
  * Zod schema for router response (structured output)
  */
 const RouterResponseSchema = z.object({
-  format: z.enum(['blog_post', 'twitter_thread', 'github_repo']),
+  format: z.enum(['blog_post', 'github_repo']),
   reasoning: z.string().min(1),
 });
 
@@ -21,13 +21,12 @@ const RouterResponseSchema = z.object({
  * 1. Receives the selected idea from Judge Agent
  * 2. Analyzes the idea's content and characteristics
  * 3. Decides which format would work best:
- *    - Blog: Deep explanations, tutorials, analyses (can include images)
- *    - Mastodon: Quick insights, hot takes, announcements (can include hero image)
+ *    - Blog: Written content (explanations, tutorials, tips) with optional images and social share
  *    - Code: Technical demos, implementations, tools
  * 4. Returns format choice with reasoning
  *
- * Note: Images are now COMPONENTS of blogs/threads, not a standalone format.
- * The router only chooses between: blog_post, twitter_thread, github_repo
+ * Note: Images and social media posts are COMPONENTS of blogs, not standalone formats.
+ * The router only chooses between: blog_post, github_repo
  *
  * Models used: GPT-4o-mini (primary) or Claude Haiku (fallback)
  */
@@ -140,20 +139,16 @@ function buildRoutingPrompt(idea: any): string {
 
 Available formats:
 
-1. **blog_post**: Deep explanations, conceptual understanding, how things work
-   - Best for: Tutorials, thought pieces, understanding complex topics
-   - Examples: "Understanding depth perception", "How async/await works", "The philosophy of functional programming"
-   - Length: 1000-2000 words with optional images
+1. **blog_post**: Deep explanations, tutorials, thought pieces, and analyses
+   - Best for: Conceptual understanding, step-by-step guides, in-depth explorations
+   - Examples: "Understanding depth perception", "How async/await works", "5 Python tips for beginners"
+   - Features: 1000-2000 words, optional images, auto-generated social media post
+   - Use for: Both long-form content AND bite-sized tips/insights
 
-2. **twitter_thread**: Quick insights, tips, concise explanations
-   - Best for: Step-by-step guides, quick takes, lists, announcements
-   - Examples: "5 Python tips", "Thread on X concept", "Quick thoughts on Y"
-   - Length: 5-10 posts (500 chars each) with optional hero image
-
-3. **github_repo**: Code demonstrations, technical experiments, interactive examples
-   - Best for: Implementations, algorithms, working demos, tools
+2. **github_repo**: Code demonstrations, technical experiments, interactive examples
+   - Best for: Working implementations, algorithms, tools, hands-on demos
    - Examples: "Fibonacci visualizer", "Neural network from scratch", "CLI tool for X"
-   - Output: Jupyter notebook, CLI app, or demo script
+   - Output: Jupyter notebook, CLI app, or demo script with full code
 
 Idea:
 Title: ${idea.title}
@@ -162,9 +157,11 @@ Description: ${idea.description || 'No description'}
 Choose the format that provides MAXIMUM VALUE for this specific idea.
 
 Decision criteria:
-- Would this idea benefit most from **explanation** (blog), **quick tips** (thread), or **hands-on code** (repo)?
+- Would this idea benefit most from **written explanation** (blog) or **hands-on code** (repo)?
 - What would an audience find most valuable?
-- Is the core insight conceptual (blog), actionable (thread), or technical (code)?
+- Is the core insight conceptual/educational (blog) or technical/implementation-focused (code)?
+
+Note: Blog posts now include auto-generated social media posts for sharing, so they work well for both long and short content.
 
 Respond with your format choice and clear reasoning.`;
 }

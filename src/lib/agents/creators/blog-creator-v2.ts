@@ -1,6 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { generateImageForContent } from './image-creator';
+import { generateSocialShare, type GeneratedSocialPost } from './social-share-generator';
 import type {
   BlogPlan,
   BlogDraft,
@@ -13,17 +14,19 @@ import { createLogger } from '@/lib/logging/logger';
 import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
 
 /**
- * BLOG CREATOR V2 - Multi-Stage Pipeline with Images
+ * BLOG CREATOR V2 - Multi-Stage Pipeline with Images & Social Share
  *
  * Pipeline:
  * 1. Planning Agent → Decides structure, sections, image needs
  * 2. Generation Agents → Text + Images (parallel)
  * 3. Review Agent → Quality check against rubric
- * 4. (Optional) Revision if score < threshold
+ * 4. Social Share Generator → Creates tweet with optional image
+ * 5. (Optional) Revision if score < threshold
  *
  * Key improvements over V1:
  * - Planning stage for better structure
  * - Can include 1-3 images with captions
+ * - Auto-generated social media post for sharing
  * - Quality review with rubrics
  * - Iteration support for quality improvement
  * - Uses GPT-4o-mini for cost-effective planning/review
@@ -157,6 +160,23 @@ export async function createBlogV2(ideaData: unknown): Promise<{
     improvements: state.review.improvements,
   });
 
+  // STAGE 4: Social Media Share Generation
+  logger.info('STAGE 4: Social share generation started');
+  const socialResult = await generateSocialShare(
+    {
+      title: state.draft.title,
+      markdown: state.draft.markdown,
+      wordCount: state.draft.wordCount,
+    },
+    idea
+  );
+  logger.info('STAGE 4: Social share generation complete', {
+    platform: socialResult.platform,
+    contentLength: socialResult.content.length,
+    hashtags: socialResult.hashtags,
+    hasImage: !!socialResult.imageUrl,
+  });
+
   // TODO: Optional iteration loop (similar to code-creator-v2)
   // For now, we accept the first draft
 
@@ -168,6 +188,7 @@ export async function createBlogV2(ideaData: unknown): Promise<{
     recommendation: state.review.recommendation,
     wordCount: state.draft.wordCount,
     imagesCount: state.draft.images.length,
+    hasSocialPost: !!socialResult,
   });
 
   // Transform to match existing BlogPost interface
@@ -179,6 +200,7 @@ export async function createBlogV2(ideaData: unknown): Promise<{
       readingTimeMinutes: state.draft.readingTimeMinutes,
       // Additional metadata
       images: state.draft.images, // Include for future use
+      socialPost: socialResult, // NEW: Social media post
       _reviewScore: state.review.overallScore,
       _sections: state.draft.sections,
     },
