@@ -26,7 +26,7 @@ import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
  * - Can include 1-3 images with captions
  * - Quality review with rubrics
  * - Iteration support for quality improvement
- * - Uses Gemini Flash for cost-effective planning/review
+ * - Uses GPT-4o-mini for cost-effective planning/review
  * - Uses Claude Haiku for excellent writing quality
  */
 
@@ -89,7 +89,6 @@ const BlogReviewSchema = z.object({
  */
 export async function createBlogV2(ideaData: unknown): Promise<{
   content: any; // BlogDraft but adapted to match existing BlogPost interface
-  tokensUsed: number;
 }> {
   // Validate idea with schema - "schemas all the way down"
   const idea = IdeaCreatorSchema.parse(ideaData);
@@ -112,19 +111,12 @@ export async function createBlogV2(ideaData: unknown): Promise<{
     attempts: 0,
     maxAttempts: 3,
     errors: [],
-    totalTokens: 0,
   };
 
   // STAGE 1: Planning
   logger.info('STAGE 1: Planning started');
   const planResult = await planBlog(idea, logger);
   state.plan = planResult.plan;
-  state.totalTokens += planResult.tokensUsed;
-  logger.trackTokens({
-    input: Math.floor(planResult.tokensUsed * 0.4),
-    output: Math.floor(planResult.tokensUsed * 0.6),
-    model: 'gpt-4o-mini',
-  });
   logger.info('STAGE 1: Planning complete', {
     title: state.plan.title,
     sectionsCount: state.plan.sections.length,
@@ -143,12 +135,6 @@ export async function createBlogV2(ideaData: unknown): Promise<{
   });
   const draftResult = await generateBlog(state.plan, idea, logger);
   state.draft = draftResult.draft;
-  state.totalTokens += draftResult.tokensUsed;
-  logger.trackTokens({
-    input: Math.floor(draftResult.tokensUsed * 0.3),
-    output: Math.floor(draftResult.tokensUsed * 0.7),
-    model: 'claude-3-5-haiku-20241022',
-  });
   logger.info('STAGE 2: Generation complete', {
     title: state.draft.title,
     wordCount: state.draft.wordCount,
@@ -163,12 +149,6 @@ export async function createBlogV2(ideaData: unknown): Promise<{
   logger.info('STAGE 3: Review started');
   const reviewResult = await reviewBlog(state.draft, state.plan, logger);
   state.review = reviewResult.review;
-  state.totalTokens += reviewResult.tokensUsed;
-  logger.trackTokens({
-    input: Math.floor(reviewResult.tokensUsed * 0.6),
-    output: Math.floor(reviewResult.tokensUsed * 0.4),
-    model: 'gpt-4o-mini',
-  });
   logger.info('STAGE 3: Review complete', {
     overallScore: state.review.overallScore,
     categoryScores: state.review.categoryScores,
@@ -180,14 +160,10 @@ export async function createBlogV2(ideaData: unknown): Promise<{
   // TODO: Optional iteration loop (similar to code-creator-v2)
   // For now, we accept the first draft
 
-  const totalTokens = logger.getTotalTokens();
   const duration = logger.getDuration();
-
   logger.info('=== BLOG CREATOR V2 COMPLETE ===', {
     durationMs: duration,
     durationSeconds: (duration / 1000).toFixed(2),
-    totalTokensUsed: state.totalTokens,
-    trackedTokens: totalTokens,
     finalScore: state.review.overallScore,
     recommendation: state.review.recommendation,
     wordCount: state.draft.wordCount,
@@ -206,7 +182,6 @@ export async function createBlogV2(ideaData: unknown): Promise<{
       _reviewScore: state.review.overallScore,
       _sections: state.draft.sections,
     },
-    tokensUsed: state.totalTokens,
   };
 }
 
@@ -216,7 +191,6 @@ export async function createBlogV2(ideaData: unknown): Promise<{
  */
 async function planBlog(idea: IdeaForCreator, logger: ReturnType<typeof createLogger>): Promise<{
   plan: BlogPlan;
-  tokensUsed: number;
 }> {
   const modelName = 'gpt-4o-mini';
   logger.info('Planning: Initializing model', { model: modelName, temperature: 0.7 });
@@ -257,7 +231,7 @@ Return a detailed plan.`;
       sectionsCount: plan.sections.length,
       includeImages: plan.includeImages,
     });
-    return { plan, tokensUsed: 0 }; // Estimate if needed
+    return { plan }; // Estimate if needed
   } catch (error) {
     logger.error('Planning: Failed to generate plan', error instanceof Error ? error : { error });
     logger.warn('Planning: Using fallback plan');
@@ -277,7 +251,6 @@ Return a detailed plan.`;
           imageRelevance: { weight: 0.1, criteria: ['Images enhance content'] },
         },
       },
-      tokensUsed: 0,
     };
   }
 }
@@ -290,8 +263,7 @@ async function generateBlog(
   plan: BlogPlan,
   idea: IdeaForCreator,
   logger: ReturnType<typeof createLogger>
-): Promise<{ draft: BlogDraft; tokensUsed: number }> {
-  let totalTokens = 0;
+): Promise<{ draft: BlogDraft }> {
 
   // Step 2a: Generate text content
   const modelName = 'claude-3-5-haiku-20241022';
@@ -328,7 +300,6 @@ Write the complete blog post in markdown format.`;
   });
   const textResponse = await model.invoke(textPrompt);
   let markdown = textResponse.content.toString();
-  totalTokens += 0; // Estimate if needed
   logger.info('Generation: Text generation complete', {
     markdownLength: markdown.length,
     estimatedWords: markdown.split(/\s+/).length,
@@ -395,7 +366,7 @@ Write the complete blog post in markdown format.`;
     sections: plan.sections,
   };
 
-  return { draft, tokensUsed: totalTokens };
+  return { draft };
 }
 
 /**
@@ -406,7 +377,7 @@ async function reviewBlog(
   draft: BlogDraft,
   plan: BlogPlan,
   logger: ReturnType<typeof createLogger>
-): Promise<{ review: BlogReview; tokensUsed: number }> {
+): Promise<{ review: BlogReview }> {
   const modelName = 'gpt-4o-mini';
   logger.info('Review: Initializing model', { model: modelName, temperature: 0.5 });
 
@@ -453,7 +424,7 @@ Return structured review.`;
       recommendation: review.recommendation,
       categoryScores: review.categoryScores,
     });
-    return { review, tokensUsed: 0 };
+    return { review };
   } catch (error) {
     logger.error('Review: Failed to generate review', error instanceof Error ? error : { error });
     logger.warn('Review: Using fallback review');
@@ -466,7 +437,6 @@ Return structured review.`;
         strengths: ['Blog created successfully'],
         improvements: ['Review failed - manual check recommended'],
       },
-      tokensUsed: 0,
     };
   }
 }
@@ -478,14 +448,14 @@ function insertImagesIntoMarkdown(markdown: string, images: GeneratedImage[]): s
   let result = markdown;
 
   images.forEach((img, index) => {
-    const placeholder = `[IMAGE-${index + 1}]`;
+    // Match [IMAGE-N] or [IMAGE-N: ...] (flexible regex)
+    const placeholderRegex = new RegExp(`\\[IMAGE-${index + 1}[^\\]]*\\]`, 'g');
     const imageMarkdown = `\n\n![${img.caption}](${img.imageUrl})\n*${img.caption}*\n\n`;
 
-    if (result.includes(placeholder)) {
-      result = result.replace(placeholder, imageMarkdown);
+    if (placeholderRegex.test(result)) {
+      result = result.replace(placeholderRegex, imageMarkdown);
     } else {
-      // If no placeholder, insert based on placement hint
-      // For now, append at end (can be enhanced later)
+      // If no placeholder, append at end
       result += imageMarkdown;
     }
   });

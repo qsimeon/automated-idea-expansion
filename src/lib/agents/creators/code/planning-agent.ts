@@ -73,7 +73,7 @@ export async function planCodeProject(idea: {
   id: string;
   title: string;
   description: string | null;
-}): Promise<{ plan: CodePlan; tokensUsed: number }> {
+}): Promise<{ plan: CodePlan }> {
   console.log(`🎯 Planning code project for: "${idea.title}"`);
 
   const model = new ChatOpenAI({
@@ -88,7 +88,6 @@ export async function planCodeProject(idea: {
 
   try {
     const result = await structuredModel.invoke(prompt);
-    const tokensUsed = 0; // We'll estimate this for structured outputs
 
     console.log(`  ✅ Plan: ${result.outputType} using ${result.language}`);
     console.log(`  📊 Complexity: ${result.estimatedComplexity}`);
@@ -104,7 +103,6 @@ export async function planCodeProject(idea: {
 
     return {
       plan,
-      tokensUsed,
     };
   } catch (error) {
     console.error('❌ Planning agent failed:', error);

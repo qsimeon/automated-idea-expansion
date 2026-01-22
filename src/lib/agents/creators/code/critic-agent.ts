@@ -79,7 +79,7 @@ type CodeReviewOutput = z.infer<typeof CodeReviewSchema>;
 export async function reviewCode(
   code: GeneratedCode,
   plan: CodePlan
-): Promise<{ review: CodeReview; tokensUsed: number }> {
+): Promise<{ review: CodeReview }> {
   console.log(`🔍 Reviewing ${code.files.length} files...`);
 
   // Initialize GPT-5 Nano for cost-effective reviews
@@ -98,7 +98,7 @@ export async function reviewCode(
         filePriority: [],
         fixSuggestions: [],
       },
-      tokensUsed: 0,
+      
     };
   }
 
@@ -114,7 +114,6 @@ export async function reviewCode(
 
   try {
     const result = await structuredModel.invoke(prompt);
-    const tokensUsed = 0; // We'll estimate this for structured outputs
 
     console.log(`  📊 Score: ${result.overallScore}/100`);
     console.log(`  📈 Category scores: C:${result.categoryScores.correctness} S:${result.categoryScores.security} Q:${result.categoryScores.codeQuality} Comp:${result.categoryScores.completeness}`);
@@ -124,7 +123,6 @@ export async function reviewCode(
 
     return {
       review: result,
-      tokensUsed,
     };
   } catch (error) {
     console.error('❌ Critic agent failed:', error);
@@ -151,7 +149,7 @@ export async function reviewCode(
         filePriority: [],
         fixSuggestions: [],
       },
-      tokensUsed: 0,
+      
     };
   }
 }
@@ -159,7 +157,7 @@ export async function reviewCode(
 /**
  * Build the review prompt
  *
- * This prompt guides Gemini to act as a thorough code reviewer
+ * This prompt guides the LLM to act as a thorough code reviewer
  */
 function buildReviewPrompt(code: GeneratedCode, plan: CodePlan): string {
   // Format all files for review

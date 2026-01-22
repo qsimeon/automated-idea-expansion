@@ -52,7 +52,7 @@ type DemoScriptOutput = z.infer<typeof DemoScriptSchema>;
 export async function generateCode(
   plan: CodePlan,
   idea: { id: string; title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
+): Promise<{ code: GeneratedCode }> {
   console.log(`🛠️  Generating ${plan.outputType} in ${plan.language}...`);
 
   // Route to specialized generator based on output type
@@ -90,7 +90,7 @@ export async function generateCode(
 async function generateCLIApp(
   plan: CodePlan,
   idea: { title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
+): Promise<{ code: GeneratedCode }> {
   // Use Claude Sonnet 4.5 - BEST for code generation
   const model = new ChatAnthropic({
     modelName: 'claude-sonnet-4-5-20250929',
@@ -147,7 +147,6 @@ OUTPUT STRUCTURE:
 
   try {
     const result = await structuredModel.invoke(prompt);
-    const tokensUsed = 0; // We'll estimate this for structured outputs
 
     // Generate SHORT, descriptive repo name
     const repoName = await generateRepoName(idea, plan);
@@ -219,7 +218,6 @@ OUTPUT STRUCTURE:
         type: plan.language === 'python' ? 'python' : 'nodejs',
         outputType: 'cli-app',
       },
-      tokensUsed,
     };
   } catch (error) {
     console.error('Failed to parse CLI app generation:', error);
@@ -233,7 +231,7 @@ OUTPUT STRUCTURE:
 async function generateWebApp(
   plan: CodePlan,
   idea: { title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
+): Promise<{ code: GeneratedCode }> {
   // For now, delegate to demo script with HTML
   return generateDemoScript(plan, idea);
 }
@@ -244,7 +242,7 @@ async function generateWebApp(
 async function generateLibrary(
   plan: CodePlan,
   idea: { title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
+): Promise<{ code: GeneratedCode }> {
   // For now, delegate to demo script
   return generateDemoScript(plan, idea);
 }
@@ -257,7 +255,7 @@ async function generateLibrary(
 async function generateDemoScript(
   plan: CodePlan,
   idea: { title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
+): Promise<{ code: GeneratedCode }> {
   // Use Claude Sonnet 4.5 for best code quality
   const model = new ChatAnthropic({
     modelName: 'claude-sonnet-4-5-20250929',
@@ -297,7 +295,6 @@ OUTPUT STRUCTURE:
 
   try {
     const result = await structuredModel.invoke(prompt);
-    const tokensUsed = 0; // We'll estimate this for structured outputs
 
     // Generate SHORT repo name
     const repoName = await generateRepoName(idea, plan);
@@ -352,7 +349,6 @@ OUTPUT STRUCTURE:
         type: plan.language === 'python' ? 'python' : 'nodejs',
         outputType: 'demo-script',
       },
-      tokensUsed,
     };
   } catch (error) {
     console.error('Failed to parse demo script generation:', error);

@@ -249,7 +249,6 @@ export interface BlogCreationState {
   attempts: number;
   maxAttempts: number;
   errors: string[];
-  totalTokens: number;
 }
 
 export interface ThreadCreationState {
@@ -260,5 +259,4 @@ export interface ThreadCreationState {
   attempts: number;
   maxAttempts: number;
   errors: string[];
-  totalTokens: number;
 }

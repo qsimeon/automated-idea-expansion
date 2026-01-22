@@ -75,7 +75,7 @@ const ThreadReviewSchema = z.object({
 
 export async function createMastodonThreadV2(
   ideaData: unknown
-): Promise<{ content: any; tokensUsed: number }> {
+): Promise<{ content: any }> {
   // Validate idea with schema - "schemas all the way down"
   const idea = IdeaCreatorSchema.parse(ideaData);
 
@@ -97,7 +97,6 @@ export async function createMastodonThreadV2(
     attempts: 0,
     maxAttempts: 3,
     errors: [],
-    totalTokens: 0,
   };
 
   try {
@@ -105,12 +104,6 @@ export async function createMastodonThreadV2(
     logger.info('STAGE 1: Planning started');
     const planResult = await planThread(idea, logger);
     state.plan = planResult.plan;
-    state.totalTokens += planResult.tokensUsed;
-    logger.trackTokens({
-      input: Math.floor(planResult.tokensUsed * 0.4),
-      output: Math.floor(planResult.tokensUsed * 0.6),
-      model: 'gpt-4o-mini',
-    });
     logger.info('STAGE 1: Planning complete', {
       hook: state.plan.hook.substring(0, 100),
       threadLength: state.plan.threadLength,
@@ -126,12 +119,6 @@ export async function createMastodonThreadV2(
     });
     const draftResult = await generateThread(state.plan, idea, logger);
     state.draft = draftResult.draft;
-    state.totalTokens += draftResult.tokensUsed;
-    logger.trackTokens({
-      input: Math.floor(draftResult.tokensUsed * 0.3),
-      output: Math.floor(draftResult.tokensUsed * 0.7),
-      model: 'claude-3-5-haiku-20241022',
-    });
     logger.info('STAGE 2: Generation complete', {
       postsGenerated: state.draft.posts.length,
       plannedPosts: state.plan.threadLength,
@@ -144,12 +131,6 @@ export async function createMastodonThreadV2(
     logger.info('STAGE 3: Review started');
     const reviewResult = await reviewThread(state.draft, state.plan, logger);
     state.review = reviewResult.review;
-    state.totalTokens += reviewResult.tokensUsed;
-    logger.trackTokens({
-      input: Math.floor(reviewResult.tokensUsed * 0.6),
-      output: Math.floor(reviewResult.tokensUsed * 0.4),
-      model: 'gpt-4o-mini',
-    });
     logger.info('STAGE 3: Review complete', {
       overallScore: state.review.overallScore,
       categoryScores: state.review.categoryScores,
@@ -158,14 +139,11 @@ export async function createMastodonThreadV2(
       improvements: state.review.improvements,
     });
 
-    const totalTokens = logger.getTotalTokens();
     const duration = logger.getDuration();
 
     logger.info('=== MASTODON THREAD CREATOR V2 COMPLETE ===', {
       durationMs: duration,
       durationSeconds: (duration / 1000).toFixed(2),
-      totalTokensUsed: state.totalTokens,
-      trackedTokens: totalTokens,
       finalScore: state.review.overallScore,
       recommendation: state.review.recommendation,
       totalPosts: state.draft.posts.length,
@@ -181,7 +159,6 @@ export async function createMastodonThreadV2(
         _plan: state.plan,
         _review: state.review,
       },
-      tokensUsed: state.totalTokens,
     };
   } catch (error) {
     logger.error('Thread creation failed', error instanceof Error ? error : { error });
@@ -194,14 +171,13 @@ export async function createMastodonThreadV2(
         totalPosts: state.draft?.totalPosts || 0,
         error: error instanceof Error ? error.message : 'Unknown error',
       },
-      tokensUsed: state.totalTokens,
     };
   }
 }
 
 // ===== STAGE 1: PLANNING AGENT =====
 
-async function planThread(idea: IdeaForCreator, logger: ReturnType<typeof createLogger>): Promise<{ plan: ThreadPlan; tokensUsed: number }> {
+async function planThread(idea: IdeaForCreator, logger: ReturnType<typeof createLogger>): Promise<{ plan: ThreadPlan }> {
   const modelName = 'gpt-4o-mini';
   logger.info('Planning: Initializing model', { model: modelName, temperature: 0.7 });
 
@@ -261,7 +237,7 @@ Return a detailed plan.`;
 
     return {
       plan: plan as ThreadPlan,
-      tokensUsed: 0, // Estimate if needed
+       // Estimate if needed
     };
   } catch (error) {
     logger.error('Planning: Failed to generate plan', error instanceof Error ? error : { error });
@@ -281,7 +257,7 @@ Return a detailed plan.`;
           charCountCompliance: { weight: 0.1, criteria: ['All posts ≤500 chars'] },
         },
       },
-      tokensUsed: 0,
+      
     };
   }
 }
@@ -292,8 +268,7 @@ async function generateThread(
   plan: ThreadPlan,
   idea: IdeaForCreator,
   logger: ReturnType<typeof createLogger>
-): Promise<{ draft: ThreadDraft; tokensUsed: number }> {
-  let totalTokens = 0;
+): Promise<{ draft: ThreadDraft }> {
 
   // Step 2a: Generate thread posts
   const modelName = 'claude-3-5-haiku-20241022';
@@ -334,7 +309,6 @@ Return complete thread with exactly ${plan.threadLength} posts.`;
       threadLength: plan.threadLength,
     });
     const draftData = await structuredModel.invoke(textPrompt);
-    totalTokens += 0; // Estimate
     logger.info('Generation: Text generation complete', {
       postsGenerated: (draftData as any).posts.length,
       plannedPosts: plan.threadLength,
@@ -399,7 +373,6 @@ Return complete thread with exactly ${plan.threadLength} posts.`;
 
     return {
       draft,
-      tokensUsed: totalTokens,
     };
   } catch (error) {
     logger.error('Generation: Thread generation failed', error instanceof Error ? error : { error });
@@ -413,7 +386,7 @@ async function reviewThread(
   draft: ThreadDraft,
   plan: ThreadPlan,
   logger: ReturnType<typeof createLogger>
-): Promise<{ review: ThreadReview; tokensUsed: number }> {
+): Promise<{ review: ThreadReview }> {
   const modelName = 'gpt-4o-mini';
   logger.info('Review: Initializing model', { model: modelName, temperature: 0.5 });
 
@@ -464,7 +437,7 @@ Score 0-100 for each dimension and provide overall recommendation.`;
 
     return {
       review: review as ThreadReview,
-      tokensUsed: 0,
+      
     };
   } catch (error) {
     logger.error('Review: Failed to generate review', error instanceof Error ? error : { error });
@@ -483,7 +456,7 @@ Score 0-100 for each dimension and provide overall recommendation.`;
         strengths: ['Thread completed successfully'],
         improvements: ['Could not generate detailed review'],
       },
-      tokensUsed: 0,
+      
     };
   }
 }

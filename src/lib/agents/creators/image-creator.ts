@@ -26,7 +26,7 @@ import type { ImageSpec, GeneratedImage } from '../types';
  */
 export async function createAIImage(idea: any): Promise<{
   content: GeneratedImage;
-  tokensUsed: number;
+  
 }> {
   // Convert idea to ImageSpec
   const spec: ImageSpec = {
@@ -41,7 +41,7 @@ export async function createAIImage(idea: any): Promise<{
 
   return {
     content: generatedImage,
-    tokensUsed: 0, // Estimate if needed
+     // Estimate if needed
   };
 }
 
@@ -86,7 +86,7 @@ export async function generateImageCaption(
   imagePrompt: string,
   concept: string
 ): Promise<string> {
-  const model = createModel('gemini-flash', 0.7); // Fast, cheap
+  const model = createModel('gpt-4o-mini', 0.7); // Fast, cheap
 
   const prompt = `Create a concise, descriptive caption for this image:
 

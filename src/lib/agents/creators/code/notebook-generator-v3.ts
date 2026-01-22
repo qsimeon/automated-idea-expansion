@@ -96,7 +96,7 @@ type MarkdownBlock = z.infer<typeof MarkdownBlockSchema>;
 export async function generateNotebookV3(
   plan: CodePlan,
   idea: { title: string; description: string | null }
-): Promise<{ code: GeneratedCode; tokensUsed: number }> {
+): Promise<{ code: GeneratedCode }> {
   console.log('📓 Generating notebook with atomic schemas (V3)...');
 
   // Use Claude Sonnet 4.5 with structured outputs
@@ -110,64 +110,78 @@ export async function generateNotebookV3(
 
   const prompt = buildAtomicNotebookPrompt(idea, plan);
 
-  try {
-    const result = await structuredModel.invoke(prompt);
-    const tokensUsed = 0; // Estimate if needed
+  // Retry logic: Try up to 3 times
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-    console.log(`   ✅ Generated ${result.cells.length} cells`);
-    console.log(
-      `   📝 Markdown cells: ${result.cells.filter((c) => c.cellType === 'markdown').length}`
-    );
-    console.log(
-      `   💻 Code cells: ${result.cells.filter((c) => c.cellType === 'code').length}`
-    );
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`   📝 Generation attempt ${attempt}/${maxRetries}...`);
+      const result = await structuredModel.invoke(prompt);
 
-    // Build the actual .ipynb file from atomic structure
-    const notebookContent = buildNotebookFromAtomicCells(result.cells);
+      console.log(`   ✅ Generated ${result.cells.length} cells`);
+      console.log(
+        `   📝 Markdown cells: ${result.cells.filter((c) => c.cellType === 'markdown').length}`
+      );
+      console.log(
+        `   💻 Code cells: ${result.cells.filter((c) => c.cellType === 'code').length}`
+      );
 
-    // Generate short repo name
-    const repoName = generateRepoName(idea);
+      // Build the actual .ipynb file from atomic structure
+      const notebookContent = buildNotebookFromAtomicCells(result.cells);
 
-    const files: CodeFile[] = [
-      {
-        path: 'notebook.ipynb',
-        content: JSON.stringify(notebookContent, null, 2),
-        language: 'json',
-      },
-      {
-        path: 'README.md',
-        content: generateReadme(idea, result.requiredPackages),
-      },
-    ];
+      // Generate short repo name
+      const repoName = generateRepoName(idea);
 
-    // Add requirements.txt
-    if (result.requiredPackages.length > 0) {
-      files.push({
-        path: 'requirements.txt',
-        content: result.requiredPackages.join('\n'),
-      });
-    }
-
-    return {
-      code: {
-        repoName,
-        description: idea.description || idea.title,
-        files,
-        dependencies: {
-          runtime: ['python'],
-          packages: result.requiredPackages,
+      const files: CodeFile[] = [
+        {
+          path: 'notebook.ipynb',
+          content: JSON.stringify(notebookContent, null, 2),
+          language: 'json',
         },
-        setupInstructions: 'pip install -r requirements.txt',
-        runInstructions: 'jupyter lab notebook.ipynb',
-        type: 'python',
-        outputType: 'notebook',
-      },
-      tokensUsed,
-    };
-  } catch (error) {
-    console.error('❌ Notebook generation failed:', error);
-    throw error;
+        {
+          path: 'README.md',
+          content: generateReadme(idea, result.requiredPackages),
+        },
+      ];
+
+      // Add requirements.txt
+      if (result.requiredPackages.length > 0) {
+        files.push({
+          path: 'requirements.txt',
+          content: result.requiredPackages.join('\n'),
+        });
+      }
+
+      return {
+        code: {
+          repoName,
+          description: idea.description || idea.title,
+          files,
+          dependencies: {
+            runtime: ['python'],
+            packages: result.requiredPackages,
+          },
+          setupInstructions: 'pip install -r requirements.txt',
+          runInstructions: 'jupyter lab notebook.ipynb',
+          type: 'python',
+          outputType: 'notebook',
+        },
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`   ❌ Attempt ${attempt} failed:`, lastError.message);
+
+      if (attempt < maxRetries) {
+        console.log(`   🔄 Retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+      }
+    }
   }
+
+  // All retries failed
+  console.error('❌ Notebook generation failed after', maxRetries, 'attempts');
+  throw lastError || new Error('Notebook generation failed');
 }
 
 /**
@@ -179,184 +193,55 @@ function buildAtomicNotebookPrompt(
   idea: { title: string; description: string | null },
   plan: CodePlan
 ): string {
-  return `Create a WORKING Jupyter notebook for: "${idea.title}"
+  return `Create a working Jupyter notebook for: "${idea.title}"
 
 ${idea.description ? `Description: ${idea.description}` : ''}
 
-CRITICAL: You MUST respond using ATOMIC, STRUCTURED FORMAT.
+Respond with structured JSON following this schema:
 
-## Notebook Structure
-
-You will create cells alternating between markdown explanations and executable code.
-
-### Cell Type 1: Markdown Cells
-
-Markdown cells contain STRUCTURED BLOCKS. You must break down markdown content into atomic blocks:
-
-**Block Types**:
-1. **Headers**: h1, h2, h3, h4, h5, h6 (each is a single text string)
-   Example: { "blockType": "h1", "text": "Understanding Depth Perception" }
-
-2. **Paragraphs**: Body text (single coherent paragraph)
-   Example: { "blockType": "paragraph", "text": "This notebook explores..." }
-
-3. **Bullet Lists**: Array of items (each item is a string)
-   Example: { "blockType": "bulletList", "items": ["First point", "Second point"] }
-
-4. **Numbered Lists**: Array of items
-   Example: { "blockType": "numberedList", "items": ["Step 1", "Step 2"] }
-
-5. **Code Blocks** (in markdown, not executable): Lines of code for display
-   Example: { "blockType": "codeBlock", "language": "python", "lines": ["x = 5", "print(x)"] }
-
-6. **Horizontal Rule**: Section separator
-   Example: { "blockType": "hr" }
-
-**Example Markdown Cell**:
-\`\`\`json
-{
-  "cellType": "markdown",
-  "blocks": [
-    { "blockType": "h1", "text": "Introduction to Depth Perception" },
-    { "blockType": "paragraph", "text": "Human vision uses multiple cues to perceive depth." },
-    { "blockType": "h2", "text": "Key Concepts" },
-    { "blockType": "bulletList", "items": [
-      "Binocular disparity",
-      "Accommodation",
-      "Motion parallax"
-    ]}
-  ]
-}
-\`\`\`
-
-### Cell Type 2: Code Cells
-
-Code cells contain ATOMIC LINES. Each line is a separate object:
-
-**Line Structure**:
-- Each line has a "code" field (string)
-- Blank lines are explicit: { "code": "" }
-- Comment lines are explicit: { "code": "# This is a comment" }
-- Code with inline comments: { "code": "x = 5  # Initialize" }
-
-**Example Code Cell**:
-\`\`\`json
-{
-  "cellType": "code",
-  "lines": [
-    { "code": "import numpy as np" },
-    { "code": "import matplotlib.pyplot as plt" },
-    { "code": "" },
-    { "code": "# Setup constants" },
-    { "code": "FOCAL_LENGTH = 14.0  # mm" },
-    { "code": "IPD = 65  # mm, interpupillary distance" },
-    { "code": "" },
-    { "code": "def calculate_depth(disparity):" },
-    { "code": "    return (FOCAL_LENGTH * IPD) / disparity" }
-  ]
-}
-\`\`\`
-
-## Requirements
-
-1. **Completeness**: Create a FULL, WORKING notebook (5-15 cells)
-2. **Structure**:
-   - Start with markdown cell (title + overview)
-   - Second cell: code cell with ALL imports
-   - Alternate markdown explanations with code demonstrations
-   - End with markdown conclusion
-3. **Executability**: All code cells must run without errors
-4. **Educational**: Markdown should explain concepts clearly
-5. **Working Examples**: Include real, executable demonstrations
-
-## Response Format
-
-You MUST respond with this exact JSON structure:
-
-\`\`\`json
 {
   "cells": [
+    // Markdown cells have blocks (headers, paragraphs, lists, code blocks)
     {
       "cellType": "markdown",
       "blocks": [
-        { "blockType": "h1", "text": "Title here" },
-        { "blockType": "paragraph", "text": "Overview here" }
+        { "blockType": "h1", "text": "Title" },
+        { "blockType": "paragraph", "text": "Explanation..." },
+        { "blockType": "bulletList", "items": ["Point 1", "Point 2"] }
       ]
     },
+    // Code cells have lines (each line is separate)
     {
       "cellType": "code",
       "lines": [
         { "code": "import numpy as np" },
-        { "code": "import matplotlib.pyplot as plt" }
-      ]
-    }
-    // ... more cells ...
-  ],
-  "requiredPackages": ["numpy", "matplotlib", "pandas"]
-}
-\`\`\`
-
-## Important Rules
-
-- ✅ **DO**: Use structured blocks for markdown (h1, h2, paragraph, lists)
-- ✅ **DO**: Use line-by-line structure for code
-- ✅ **DO**: Make blank lines explicit: { "code": "" }
-- ✅ **DO**: Include all imports in first code cell
-- ✅ **DO**: Create working, executable code
-
-- ❌ **DON'T**: Mix different block types in markdown
-- ❌ **DON'T**: Put entire code blocks as single strings
-- ❌ **DON'T**: Use placeholder code that won't run
-- ❌ **DON'T**: Forget to specify all required packages
-
-## Example of CORRECT Structure
-
-\`\`\`json
-{
-  "cells": [
-    {
-      "cellType": "markdown",
-      "blocks": [
-        { "blockType": "h1", "text": "${idea.title}" },
-        { "blockType": "paragraph", "text": "In this notebook, we'll explore..." },
-        { "blockType": "h2", "text": "What You'll Learn" },
-        { "blockType": "bulletList", "items": ["Concept 1", "Concept 2", "Concept 3"] }
-      ]
-    },
-    {
-      "cellType": "code",
-      "lines": [
-        { "code": "import numpy as np" },
-        { "code": "import matplotlib.pyplot as plt" },
-        { "code": "import seaborn as sns" }
-      ]
-    },
-    {
-      "cellType": "markdown",
-      "blocks": [
-        { "blockType": "h2", "text": "1. Setup and Constants" },
-        { "blockType": "paragraph", "text": "First, let's define the key parameters..." }
-      ]
-    },
-    {
-      "cellType": "code",
-      "lines": [
-        { "code": "# Constants for human eye" },
-        { "code": "FOCAL_LENGTH = 14.0  # mm" },
-        { "code": "IPD = 65.0  # mm" },
-        { "code": "" },
-        { "code": "print(f'Focal length: {FOCAL_LENGTH}mm')" },
-        { "code": "print(f'Interpupillary distance: {IPD}mm')" }
+        { "code": "" },  // Blank lines are explicit
+        { "code": "# Comment" },
+        { "code": "x = 5" }
       ]
     }
   ],
-  "requiredPackages": ["numpy", "matplotlib", "seaborn"]
+  "requiredPackages": ["numpy", "matplotlib"]
 }
-\`\`\`
 
-Now create the notebook for: "${idea.title}"
+Block types for markdown:
+- h1, h2, h3, h4, h5, h6: { "blockType": "h1", "text": "..." }
+- paragraph: { "blockType": "paragraph", "text": "..." }
+- bulletList: { "blockType": "bulletList", "items": ["...", "..."] }
+- numberedList: { "blockType": "numberedList", "items": ["...", "..."] }
+- codeBlock: { "blockType": "codeBlock", "language": "python", "lines": ["..."] }
+- hr: { "blockType": "hr" }
 
-Remember: ATOMIC STRUCTURE ONLY. Break everything into primitives.`;
+Requirements:
+- Create 5-15 cells total
+- Start with markdown (title + overview)
+- Second cell: ALL imports
+- Alternate markdown and code
+- End with markdown conclusion
+- Code must be executable and working
+- Include all required packages
+
+Create the notebook now.`;
 }
 
 /**
@@ -374,7 +259,7 @@ function buildNotebookFromAtomicCells(
           cell_type: 'markdown',
           id: generateCellId(index),
           metadata: {},
-          source: renderMarkdownBlocks(cell.blocks),
+          source: renderMarkdownBlocks(cell.blocks).map((line) => line + '\n'),
         };
       } else {
         // Code cell
@@ -382,7 +267,7 @@ function buildNotebookFromAtomicCells(
           cell_type: 'code',
           id: generateCellId(index),
           metadata: {},
-          source: cell.lines.map((line) => line.code),
+          source: cell.lines.map((line) => line.code + '\n'),
           outputs: [],
           execution_count: null,
         };

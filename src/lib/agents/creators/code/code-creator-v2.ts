@@ -18,7 +18,7 @@ import type { GeneratedCode, CodeCreationState } from './types';
  * Why this architecture?
  * - **Separation of concerns**: Each agent has one job
  * - **Better quality**: Planning before coding, review after
- * - **Cost-effective**: Use cheap models (Gemini) for review
+ * - **Cost-effective**: Use cheap models (GPT-4o-mini) for review
  * - **Extensible**: Easy to add more stages (fixer, optimizer, etc.)
  *
  * Current vs Future:
@@ -37,19 +37,18 @@ export async function createCodeProjectV2(idea: {
   description: string | null;
 }): Promise<{
   content: any; // Will be transformed to match existing format
-  tokensUsed: number;
+  
 }> {
   console.log('\n🚀 === MULTI-STAGE CODE CREATOR V2 ===');
   console.log(`   Idea: "${idea.title}"\n`);
 
-  let totalTokens = 0;
   const state: CodeCreationState = {
     idea,
     plan: null,
     code: null,
     review: null,
     attempts: 0,
-    maxAttempts: 2, // Allow up to 2 fix attempts in future
+    maxAttempts: 3, // Allow up to 3 fix attempts
     errors: [],
   };
 
@@ -61,10 +60,8 @@ export async function createCodeProjectV2(idea: {
 
     const planResult = await planCodeProject(idea);
     state.plan = planResult.plan;
-    totalTokens += planResult.tokensUsed;
 
     console.log(`   ✅ Plan complete: ${state.plan.outputType} in ${state.plan.language}`);
-    console.log(`   💰 Tokens used: ${planResult.tokensUsed}\n`);
 
     // STAGE 2: GENERATION
     console.log('🛠️  STAGE 2: Code Generation');
@@ -73,11 +70,9 @@ export async function createCodeProjectV2(idea: {
 
     const codeResult = await generateCode(state.plan, idea);
     state.code = codeResult.code;
-    totalTokens += codeResult.tokensUsed;
 
     console.log(`   ✅ Generated ${state.code.files.length} files`);
     console.log(`   📁 Files: ${state.code.files.map((f) => f.path).join(', ')}`);
-    console.log(`   💰 Tokens used: ${codeResult.tokensUsed}\n`);
 
     // STAGE 3: CODE REVIEW
     console.log('🔍 STAGE 3: Code Review');
@@ -86,12 +81,10 @@ export async function createCodeProjectV2(idea: {
 
     const reviewResult = await reviewCode(state.code, state.plan);
     state.review = reviewResult.review;
-    totalTokens += reviewResult.tokensUsed;
 
     console.log(`   📊 Quality Score: ${state.review.overallScore}/100`);
     console.log(`   🐛 Issues: ${state.review.issues.length}`);
     console.log(`   ✅ Recommendation: ${state.review.recommendation}`);
-    console.log(`   💰 Tokens used: ${reviewResult.tokensUsed}\n`);
 
     // Log detailed review results
     if (state.review.issues.length > 0) {
@@ -144,20 +137,16 @@ export async function createCodeProjectV2(idea: {
 
         const regenResult = await generateCode(state.plan!, idea);
         state.code = regenResult.code;
-        totalTokens += regenResult.tokensUsed;
 
-        console.log(`   ✅ Regenerated ${state.code.files.length} files`);
-        console.log(`   💰 Tokens: ${regenResult.tokensUsed}\n`);
+        console.log(`   ✅ Regenerated ${state.code.files.length} files\n`);
       } else {
         // Targeted fixes
         console.log(`🔧 STAGE 4b: Targeted Fixes (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
 
         const fixResult = await fixCode(state.code!, state.review, state.plan!);
         state.code = fixResult.code;
-        totalTokens += fixResult.tokensUsed;
 
-        console.log(`   ✅ Fixed files: ${fixResult.filesFixed.join(', ')}`);
-        console.log(`   💰 Tokens: ${fixResult.tokensUsed}\n`);
+        console.log(`   ✅ Fixed files: ${fixResult.filesFixed.join(', ')}\n`);
       }
 
       // Re-review after changes
@@ -166,14 +155,12 @@ export async function createCodeProjectV2(idea: {
       const prevScore = state.review.overallScore;
       const reReviewResult = await reviewCode(state.code!, state.plan!);
       state.review = reReviewResult.review;
-      totalTokens += reReviewResult.tokensUsed;
 
       const scoreDiff = state.review.overallScore - prevScore;
       console.log(
         `   📊 Score: ${state.review.overallScore}/100 (${scoreDiff >= 0 ? '+' : ''}${scoreDiff})`
       );
-      console.log(`   🐛 Issues: ${state.review.issues.length}`);
-      console.log(`   💰 Tokens: ${reReviewResult.tokensUsed}\n`);
+      console.log(`   🐛 Issues: ${state.review.issues.length}\n`);
 
       // Check for score decline (fixes made it worse)
       if (scoreDiff < -10) {
@@ -193,15 +180,10 @@ export async function createCodeProjectV2(idea: {
 
     console.log(`\n📊 === ITERATION SUMMARY ===`);
     console.log(`   Attempts: ${state.attempts}`);
-    console.log(`   Final Score: ${state.review.overallScore}/100`);
-    console.log(`   Total Tokens: ${totalTokens}`);
-    console.log(`   Estimated Cost: $${((totalTokens / 1000000) * 3).toFixed(4)}`); // Rough estimate
-    console.log('');
+    console.log(`   Final Score: ${state.review.overallScore}/100\n`);
 
     // FINAL: Transform to expected format
-    console.log('✅ === PIPELINE COMPLETE ===');
-    console.log(`   Total tokens used: ${totalTokens}`);
-    console.log(`   Estimated cost: $${((totalTokens / 1_000_000) * 0.15).toFixed(4)}\n`);
+    console.log('✅ === PIPELINE COMPLETE ===\n');
 
     // Transform to match the existing code-creator.ts format
     // This ensures compatibility with the existing system
@@ -218,7 +200,6 @@ export async function createCodeProjectV2(idea: {
         _reviewIssues: state.review.issues.length,
         _reviewRecommendation: state.review.recommendation,
       },
-      tokensUsed: totalTokens,
     };
   } catch (error) {
     console.error('\n❌ === PIPELINE FAILED ===');

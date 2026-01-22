@@ -28,9 +28,15 @@ export async function creatorAgent(
   const { selectedIdea, chosenFormat, logger: parentLogger } = state;
 
   // Create child logger for this stage
-  const logger: Logger = parentLogger
-    ? parentLogger.child('creator-agent')
-    : { info: console.log, error: console.error, warn: console.warn, debug: console.debug, child: () => ({} as Logger) };
+  const logger = parentLogger
+    ? parentLogger.child({ stage: 'creator-agent' })
+    : {
+        info: console.log,
+        error: console.error,
+        warn: console.warn,
+        debug: console.debug,
+        child: () => ({ info: console.log, error: console.error, warn: console.warn, debug: console.debug })
+      };
 
   // Validation
   if (!selectedIdea) {
@@ -61,7 +67,6 @@ export async function creatorAgent(
         logger.info('Delegating to blog creator (V2) - multi-stage pipeline with images');
         const blogResult = await createBlogV2(selectedIdea);
         logger.info('Blog creator completed successfully', {
-          tokensUsed: blogResult.tokensUsed,
           hasContent: !!blogResult.content,
         });
         return {
@@ -69,14 +74,12 @@ export async function creatorAgent(
             format: 'blog_post',
             ...blogResult.content,
           },
-          tokensUsed: blogResult.tokensUsed,
         };
 
       case 'twitter_thread':
         logger.info('Delegating to mastodon creator (V2) - multi-stage pipeline with hero image');
         const mastodonResult = await createMastodonThreadV2(selectedIdea);
         logger.info('Mastodon creator completed successfully', {
-          tokensUsed: mastodonResult.tokensUsed,
           hasContent: !!mastodonResult.content,
         });
         return {
@@ -84,14 +87,12 @@ export async function creatorAgent(
             format: 'twitter_thread',
             ...mastodonResult.content,
           },
-          tokensUsed: mastodonResult.tokensUsed,
         };
 
       case 'github_repo':
         logger.info('Delegating to code creator (V2) - multi-stage pipeline');
         const codeResult = await createCodeProjectV2(selectedIdea);
         logger.info('Code creator completed successfully', {
-          tokensUsed: codeResult.tokensUsed,
           hasContent: !!codeResult.content,
         });
 
@@ -122,7 +123,6 @@ export async function creatorAgent(
             published: !isDryRun,
             publishResult,
           },
-          tokensUsed: codeResult.tokensUsed,
         };
 
       default:

@@ -83,7 +83,7 @@ OPTIONAL STAGE 4: Iteration
 - **Iteration Loop** (unique to code):
   - If score < 75: Fix specific files (Fixer Agent) OR regenerate all
   - Re-review after fixes
-  - Maximum 5 iterations
+  - Maximum 3 iterations
   - Early stopping if quality acceptable
 
 **Features:**

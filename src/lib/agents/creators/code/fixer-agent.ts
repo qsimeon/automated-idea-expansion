@@ -30,7 +30,7 @@ export async function fixCode(
   currentCode: GeneratedCode,
   review: CodeReview,
   plan: CodePlan
-): Promise<{ code: GeneratedCode; tokensUsed: number; filesFixed: string[] }> {
+): Promise<{ code: GeneratedCode;  filesFixed: string[] }> {
   console.log(`🔧 Fixing code based on ${review.fixSuggestions?.length || 0} suggestions...`);
 
   // Identify files to fix (prioritize critical issues)
@@ -47,12 +47,11 @@ export async function fixCode(
     console.log(`   ⚠️  No files identified for fixing, returning original code`);
     return {
       code: currentCode,
-      tokensUsed: 0,
+      
       filesFixed: [],
     };
   }
 
-  let totalTokens = 0;
   const fixedFiles: CodeFile[] = [];
 
   // Fix each file individually
@@ -68,7 +67,6 @@ export async function fixCode(
     const result = await fixSingleFile(originalFile, fileFeedback, plan, currentCode);
 
     fixedFiles.push(result.file);
-    totalTokens += result.tokensUsed;
     console.log(`   ✅ Fixed ${filePath}`);
   }
 
@@ -80,7 +78,6 @@ export async function fixCode(
 
   return {
     code: { ...currentCode, files: updatedFiles },
-    tokensUsed: totalTokens,
     filesFixed: filesToFix.slice(0, 3),
   };
 }
@@ -127,7 +124,7 @@ async function fixSingleFile(
   feedback: CodeReview['fixSuggestions'],
   plan: CodePlan,
   fullCode: GeneratedCode
-): Promise<{ file: CodeFile; tokensUsed: number }> {
+): Promise<{ file: CodeFile }> {
   // Use Claude Sonnet 4.5 for best code fixing
   const model = new ChatAnthropic({
     modelName: 'claude-sonnet-4-5-20250929',
@@ -175,7 +172,6 @@ Return the COMPLETE fixed file as JSON (no markdown, just JSON):
 
   try {
     const response = await model.invoke(prompt);
-    const tokensUsed = (response.response_metadata as any)?.tokenUsage?.totalTokens || 0;
     const content = response.content.toString();
 
     // Parse JSON response
@@ -197,7 +193,7 @@ Return the COMPLETE fixed file as JSON (no markdown, just JSON):
       parsed = JSON.parse(cleaned);
     } catch (parseError) {
       console.error(`   ❌ Failed to parse fix for ${originalFile.path}, using original`);
-      return { file: originalFile, tokensUsed }; // Return original if parsing fails
+      return { file: originalFile }; // Return original if parsing fails
     }
 
     return {
@@ -206,10 +202,9 @@ Return the COMPLETE fixed file as JSON (no markdown, just JSON):
         content: parsed.content,
         language: originalFile.language,
       },
-      tokensUsed,
     };
   } catch (error) {
     console.error(`   ❌ Failed to fix ${originalFile.path}:`, error);
-    return { file: originalFile, tokensUsed: 0 }; // Return original on error
+    return { file: originalFile }; // Return original on error
   }
 }
