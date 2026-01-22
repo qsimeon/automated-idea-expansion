@@ -358,7 +358,7 @@ cells[2].blocks[0].text = "Updated heading";
                     │        ▼
                     │  ┌──────────────────────────┐
                     │  │  STAGE 4: ITERATION      │
-                    │  │  Max 5 attempts          │
+                    │  │  Max 3 attempts          │
                     │  │                          │
                     │  │  If score < 60:          │
                     │  │    → Full regenerate     │
