@@ -157,7 +157,11 @@ export interface BlogReview {
 }
 
 /**
- * THREAD SCHEMAS
+ * THREAD SCHEMAS (LEGACY - FOR BACKWARD COMPATIBILITY ONLY)
+ *
+ * These types are kept for viewing old twitter_thread outputs.
+ * New content should use blog_post format with social share component.
+ *
  * Multi-stage pipeline: Plan → Generate → Review
  */
 

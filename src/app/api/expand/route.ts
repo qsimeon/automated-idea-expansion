@@ -219,12 +219,8 @@ export async function POST(request: Request) {
             preview:
               result.chosenFormat === 'blog_post'
                 ? result.generatedContent.title
-                : result.chosenFormat === 'twitter_thread'
-                ? `${result.generatedContent.totalPosts} posts`
                 : result.chosenFormat === 'github_repo'
                 ? result.generatedContent.repoName
-                : result.chosenFormat === 'image'
-                ? result.generatedContent.prompt
                 : 'Generated',
           }
         : null,

@@ -168,7 +168,10 @@ export async function createBlogV2(ideaData: unknown): Promise<{
       markdown: state.draft.markdown,
       wordCount: state.draft.wordCount,
     },
-    idea
+    {
+      title: idea.title,
+      description: idea.bullets?.join(' • ') || null,
+    }
   );
   logger.info('STAGE 4: Social share generation complete', {
     platform: socialResult.platform,

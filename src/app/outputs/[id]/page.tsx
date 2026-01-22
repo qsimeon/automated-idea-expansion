@@ -292,7 +292,9 @@ function BlogViewer({ content }: { content: any }) {
   );
 }
 
-// Mastodon Thread Viewer
+// Mastodon Thread Viewer (LEGACY - FOR BACKWARD COMPATIBILITY)
+// This viewer is kept for displaying old twitter_thread outputs.
+// New content uses blog_post format with social share component.
 function MastodonViewer({ content }: { content: any }) {
   return (
     <div>
