@@ -1,18 +1,31 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 import { getIdeasForUser, createIdea } from '@/lib/db/queries';
 import type { CreateIdeaInput } from '@/lib/db/types';
-
-// For now, we'll use a hardcoded test user UUID since Clerk is disabled
-// TODO: Replace with actual Clerk user ID when auth is re-enabled
-const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * GET /api/ideas
  * Get all ideas for the authenticated user
+ *
+ * REQUIRES AUTHENTICATION
  */
 export async function GET() {
   try {
-    const ideas = await getIdeasForUser(TEST_USER_ID);
+    // Check authentication
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+        },
+        { status: 401 }
+      );
+    }
+
+    const ideas = await getIdeasForUser(session.user.id);
 
     return NextResponse.json({
       success: true,
@@ -34,9 +47,24 @@ export async function GET() {
 /**
  * POST /api/ideas
  * Create a new idea
+ *
+ * REQUIRES AUTHENTICATION
  */
 export async function POST(request: Request) {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+        },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
 
     // Validate required field: content (the raw idea)
@@ -58,7 +86,7 @@ export async function POST(request: Request) {
       bullets: Array.isArray(body.bullets) ? body.bullets.filter((b: any) => typeof b === 'string' && b.trim()) : undefined,
     };
 
-    const idea = await createIdea(TEST_USER_ID, input);
+    const idea = await createIdea(session.user.id, input);
 
     return NextResponse.json(
       {

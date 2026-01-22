@@ -1,19 +1,33 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/db/supabase';
-
-// Temporarily use test user
-const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * GET /api/outputs
- * Fetch all outputs for the user
+ * Fetch all outputs for the authenticated user
+ *
+ * REQUIRES AUTHENTICATION
  */
 export async function GET() {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+        },
+        { status: 401 }
+      );
+    }
+
     const { data, error } = await supabaseAdmin
       .from('outputs')
       .select('*')
-      .eq('user_id', TEST_USER_ID)
+      .eq('user_id', session.user.id)
       .order('created_at', { ascending: false });
 
     if (error) {

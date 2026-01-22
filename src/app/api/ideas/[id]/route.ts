@@ -1,22 +1,35 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 import { getIdeaById, updateIdea, deleteIdea } from '@/lib/db/queries';
 import type { UpdateIdeaInput } from '@/lib/db/types';
-
-// For now, we'll use a hardcoded test user UUID since Clerk is disabled
-// TODO: Replace with actual Clerk user ID when auth is re-enabled
-const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * GET /api/ideas/[id]
  * Get a single idea by ID
+ *
+ * REQUIRES AUTHENTICATION
  */
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+        },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
-    const idea = await getIdeaById(id, TEST_USER_ID);
+    const idea = await getIdeaById(id, session.user.id);
 
     if (!idea) {
       return NextResponse.json(
@@ -47,12 +60,27 @@ export async function GET(
 /**
  * PUT /api/ideas/[id]
  * Update an existing idea
+ *
+ * REQUIRES AUTHENTICATION
  */
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+        },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
     const body = await request.json();
 
@@ -102,7 +130,7 @@ export async function PUT(
       input.status = body.status;
     }
 
-    const idea = await updateIdea(id, TEST_USER_ID, input);
+    const idea = await updateIdea(id, session.user.id, input);
 
     return NextResponse.json({
       success: true,
@@ -123,14 +151,29 @@ export async function PUT(
 /**
  * DELETE /api/ideas/[id]
  * Delete an idea
+ *
+ * REQUIRES AUTHENTICATION
  */
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+        },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
-    await deleteIdea(id, TEST_USER_ID);
+    await deleteIdea(id, session.user.id);
 
     return NextResponse.json({
       success: true,

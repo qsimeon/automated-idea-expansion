@@ -22,7 +22,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Delete functionality for both ideas and outputs
 
 #### **Phase 4: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
-- ✅ **Judge Agent** - Evaluates and selects best idea (GPT-4o-mini)
+- ✅ **User Selection** - You choose which idea to expand (no automatic judging)
 - ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
 - ✅ **Creator Agents** - Generates content in **2 formats**:
   - 📝 **Blog Posts** - 4-stage cell-based pipeline with images + social share:
@@ -84,13 +84,13 @@ The automated idea expansion pipeline uses LangGraph to orchestrate a multi-stag
 ### High-Level Flow
 
 ```
-User Idea → Judge Agent → Router Agent → Creator Agent → Saved Output
-              ↓             ↓               ↓
-           Evaluates    Chooses         Generates
-           & selects    format          content
-           best idea    (blog           (4-5 stages
-                        or              depending on
-                        code)           format)
+User Submits Idea → User Selects Idea → Router Agent → Creator Agent → Saved Output
+                     (Click "Expand")        ↓               ↓
+                                         Chooses         Generates
+                                         format          content
+                                         (blog           (4-5 stages
+                                         or              depending on
+                                         code)           format)
 
 Blog Pipeline:
   Planning → Generation (text + images) → Social Share → Review → Output
@@ -101,13 +101,7 @@ Code Pipeline:
 
 ### Agent Pipeline Details
 
-**1. Judge Agent** (`judge-agent.ts`)
-- **Model:** GPT-4o-mini
-- **Task:** Evaluate all pending ideas and select the best one
-- **Criteria:** Impact, Originality, Feasibility, Timeliness, Clarity
-- **Output:** Selected idea + score (0-100) + reasoning
-
-**2. Router Agent** (`router-agent.ts`)
+**1. Router Agent** (`router-agent.ts`)
 - **Model:** GPT-4o-mini
 - **Task:** Decide optimal output format based on value to audience
 - **Options:**
@@ -115,7 +109,7 @@ Code Pipeline:
   - `github_repo` - Code demonstrations, experiments, interactive projects
 - **Output:** Format + reasoning
 
-**3. Creator Agent** (`creator-agent.ts`)
+**2. Creator Agent** (`creator-agent.ts`)
 - **Task:** Route to format-specific creator and orchestrate generation
 
 #### Blog Creator (4 stages)
@@ -147,10 +141,11 @@ mini   Sonnet    mini   Fix/Regen    (or dry-run)
 
 | Task | Model | Why? |
 |------|-------|------|
-| Judge/Router | GPT-4o-mini | Fast, cheap ($0.15/1M input), good reasoning |
-| Planning | GPT-4o-mini | Fast, cost-effective, good at structure |
-| Text Generation | Claude Haiku | Superior writing quality ($0.25/1M input) |
-| Code Generation | Claude Sonnet | Best at code (benchmarks leader, $3/1M input) |
+| Router | GPT-4o-mini | Fast, cheap ($0.15/1M input), good routing decisions |
+| Blog Planning | GPT-5 Nano | Ultra-fast structured reasoning (T=1.0 only) |
+| Blog Generation | Claude Sonnet 4.5 | Superior writing quality, handles complex schemas |
+| Code Planning | GPT-4o-mini | Fast, cost-effective, good at structure |
+| Code Generation | Claude Sonnet 4.5 | Best at code (benchmarks leader, $3/1M input) |
 | Review | GPT-4o-mini | Fast, consistent evaluation |
 
 ### Typical Costs Per Expansion
@@ -171,10 +166,8 @@ The system uses emoji-prefixed structured logging for easy visual parsing and tr
 |-------|---------|------------|
 | 📥 | Request received | API endpoint |
 | 🚀 | Pipeline starting | Graph orchestrator |
-| 📊 | Evaluating/analyzing | Judge agent |
 | 🎯 | Routing/deciding | Router agent |
 | 📝 | Blog creation | Blog creator |
-| 🦣 | Thread creation | Mastodon creator |
 | 💻 | Code creation | Code creator |
 | 📋 | Planning stage | All creators (stage 1) |
 | 🛠️ | Generation stage | All creators (stage 2) |
@@ -209,22 +202,16 @@ Each log entry includes:
 Example of a successful blog expansion:
 
 ```
-[2026-01-21T15:30:45.123Z] INFO  [exec-abc123] [api-endpoint] 📥 Expand request received
-   ideaCount: 5
-
-[2026-01-21T15:30:46.789Z] INFO  [exec-abc123] [judge-agent] 📊 Evaluating ideas
-   candidateCount: 5
-
-[2026-01-21T15:30:48.123Z] INFO  [exec-abc123] [judge-agent] ✅ Idea selected
+[2026-01-22T15:30:45.123Z] INFO  [exec-abc123] [api-endpoint] 📥 Expand request received
+   ideaId: abc-123
    title: "Understanding depth perception"
-   score: 85
 
-[2026-01-21T15:30:48.456Z] INFO  [exec-abc123] [router-agent] 🎯 Analyzing idea for format
+[2026-01-22T15:30:46.789Z] INFO  [exec-abc123] [router-agent] 🎯 Analyzing idea for format
 
-[2026-01-21T15:30:49.789Z] INFO  [exec-abc123] [router-agent] ✅ Format selected
+[2026-01-22T15:30:48.123Z] INFO  [exec-abc123] [router-agent] ✅ Format selected
    format: blog_post
 
-[2026-01-21T15:30:50.123Z] INFO  [exec-abc123] [blog-creator] === BLOG CREATOR V2 STARTED ===
+[2026-01-22T15:30:48.456Z] INFO  [exec-abc123] [blog-creator] === BLOG CREATOR V3 STARTED ===
 
 [2026-01-21T15:30:50.456Z] INFO  [exec-abc123] [blog-creator] STAGE 1: Planning started
 
@@ -267,7 +254,7 @@ Example of a successful blog expansion:
 2. Filter/search logs for that ID
 3. Follow the progression:
    ```
-   api-endpoint → judge-agent → router-agent → creator → api-endpoint
+   api-endpoint → router-agent → creator → api-endpoint
    ```
 
 **Common Issues:**
@@ -360,7 +347,7 @@ Example of a successful blog expansion:
 6. **Use the app:**
    - Visit http://localhost:3000/ideas
    - Add an idea: "Build a sentiment analysis CLI tool"
-   - Click "✨ Expand Best Idea Now"
+   - Click "Expand" on the idea you want to generate content for
    - Watch the terminal for detailed pipeline logs
    - View the generated output!
 
@@ -371,44 +358,41 @@ Example of a successful blog expansion:
 ### Multi-Agent Pipeline
 
 ```
-User Adds Idea
+User Submits Idea
       ↓
-  Judge Agent (GPT-5 Nano)
-  - Scores all pending ideas
-  - Selects best one
-  - Provides reasoning
+User Selects Idea to Expand (Click "Expand" button)
       ↓
-  Router Agent (GPT-5 Nano)
+  Router Agent (GPT-4o-mini)
   - Analyzes idea characteristics
-  - Chooses format: blog_post | twitter_thread | github_repo | image
+  - Chooses format: blog_post | github_repo
   - Explains decision
       ↓
   Creator Agent (Orchestrator)
       ↓
   ┌─────────────┼─────────────┐
   │             │             │
-Blog Creator  Thread Creator  [Code Creator V2]  Image Creator
-  │             │             │                    │
-  │             │         Planning Agent          │
-  │             │         (GPT-5 Nano)            │
-  │             │             ↓                    │
-  │             │         Generation Agent        │
-  │             │         (Claude Sonnet 4.5)     │
-  │             │             ↓                    │
-  │             │         Critic Agent            │
-  │             │         (GPT-5 Nano)            │
-  │             │             ↓                    │
-  │             │         Quality Gate            │
-  │             │         (score ≥ 75?)           │
-  │             │         ↙         ↘             │
-  │             │    PASS ✅      FAIL ❌         │
-  │             │         ↓           ↓           │
-  │             │     Publish    Fixer Agent      │
-  │             │                (Claude 4.5)     │
-  │             │                     ↓           │
-  │             │              Re-review ↻        │
-  │             │            (max 5 cycles)       │
-  └─────────────┴─────────────┴────────────────────┘
+Blog Creator V3            Code Creator V2
+  │                             │
+  │                         Planning Agent
+  │                         (GPT-4o-mini)
+  │                             ↓
+  │                         Generation Agent
+  │                         (Claude Sonnet 4.5)
+  │                             ↓
+  │                         Critic Agent
+  │                         (GPT-4o-mini)
+  │                             ↓
+  │                         Quality Gate
+  │                         (score ≥ 75?)
+  │                         ↙         ↘
+  │                    PASS ✅      FAIL ❌
+  │                         ↓           ↓
+  │                     Publish    Fixer Agent
+  │                                (Claude 4.5)
+  │                                     ↓
+  │                              Re-review ↻
+  │                            (max 3 cycles)
+  └─────────────┴─────────────────────────────┘
                       ↓
               Output Saved to DB
                       ↓
@@ -510,7 +494,6 @@ automated-idea-expansion/
 │   └── lib/
 │       ├── agents/             # LangGraph AI agents
 │       │   ├── graph.ts        # Pipeline orchestration
-│       │   ├── judge-agent.ts  # Idea evaluation
 │       │   ├── router-agent.ts # Format selection
 │       │   ├── creator-agent.ts # Creator orchestrator
 │       │   ├── types.ts        # Shared state types
@@ -559,17 +542,20 @@ All tables have Row-Level Security (RLS) enabled.
 
 | Agent | Model | Avg Tokens | Cost |
 |-------|-------|-----------|------|
-| Judge | GPT-5 Nano | ~1,000 | $0.0001 |
-| Router | GPT-5 Nano | ~500 | $0.00005 |
-| Blog Creator | GPT-5 Nano | ~3,000 | $0.0003 |
-| **Total (Blog)** | | ~4,500 | **$0.0005** |
+| Router | GPT-4o-mini | ~500 | $0.00005 |
+| Blog Planning | GPT-5 Nano | ~1,500 | $0.00015 |
+| Blog Generation | Claude Sonnet 4.5 | ~5,000 | $0.015 |
+| Images (3x) | FLUX Schnell | N/A | $0.003 |
+| Review | GPT-4o-mini | ~1,000 | $0.0001 |
+| **Total (Blog)** | | ~8,000 | **$0.019** |
 | | | | |
-| Code Planning | GPT-5 Nano | ~1,200 | $0.00012 |
+| Router | GPT-4o-mini | ~500 | $0.00005 |
+| Code Planning | GPT-4o-mini | ~1,200 | $0.00012 |
 | Code Generation | Claude Sonnet 4.5 | ~5,000 | $0.015 |
-| Code Critic | GPT-5 Nano | ~4,000 | $0.0004 |
+| Code Critic | GPT-4o-mini | ~4,000 | $0.0004 |
 | Code Fixer (if needed) | Claude Sonnet 4.5 | ~3,000 | $0.009 |
-| **Total (Code - 0 iterations)** | | ~10,200 | **$0.016** |
-| **Total (Code - 2 iterations)** | | ~16,200 | **$0.034** |
+| **Total (Code - 0 iterations)** | | ~10,700 | **$0.016** |
+| **Total (Code - 2 iterations)** | | ~16,700 | **$0.034** |
 
 **Average: ~$0.02-0.04 per code project** (with quality iteration loops)
 
@@ -736,24 +722,24 @@ This is a learning project following a comprehensive implementation plan. Each p
 
 2. **Expand it:**
    ```
-   Click "✨ Expand Best Idea Now"
+   Click the "Expand" button on your idea
    Watch terminal logs for agent pipeline
-   Wait 10-20 seconds
+   Wait 10-30 seconds
    ```
 
 3. **View the output:**
    ```
    Automatically redirects to /outputs/[id]
-   See your generated blog post, code, thread, or image!
+   See your generated blog post or code project!
    ```
 
 4. **Experiment with different ideas:**
    - Technical: "Build a password strength checker"
    - Educational: "Explain async/await to a beginner"
-   - Creative: "A cyberpunk city at sunset"
    - Tool: "Create a JSON formatter CLI"
+   - Tutorial: "How to deploy a Next.js app"
 
-The agent pipeline will automatically choose the best format for each idea!
+The Router Agent will automatically choose the best format (blog or code) for each idea!
 
 ---
 

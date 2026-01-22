@@ -37,10 +37,10 @@ export interface TokenUsage {
  *   executionId: 'exec-123',
  *   userId: 'user-456',
  *   ideaId: 'idea-789',
- *   stage: 'judge-agent',
+ *   stage: 'router-agent',
  * });
  *
- * logger.info('Evaluating ideas', { ideaCount: 5 });
+ * logger.info('Analyzing idea for format', { ideaTitle: 'Build a CLI tool' });
  * logger.trackTokens({ input: 500, output: 1200, model: 'gpt-4o-mini' });
  * ```
  */

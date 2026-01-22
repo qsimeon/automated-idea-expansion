@@ -1,6 +1,5 @@
 import { supabaseAdmin } from './supabase';
-import type { Idea, CreateIdeaInput, UpdateIdeaInput, Credential } from './types';
-import { encryptToJSON, decryptFromJSON } from '../encryption/aes';
+import type { Idea, CreateIdeaInput, UpdateIdeaInput } from './types';
 
 // ============================================================
 // IDEAS QUERIES

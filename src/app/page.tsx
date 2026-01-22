@@ -11,7 +11,7 @@ export default function Home() {
       <div style={{ padding: '20px', backgroundColor: '#f0fdf4', border: '2px solid #86efac', borderRadius: '8px', marginBottom: '30px' }}>
         <h3 style={{ margin: '0 0 10px 0', color: '#166534' }}>✅ Phase 4 Complete - Multi-Agent AI Pipeline Live!</h3>
         <p style={{ margin: 0, color: '#15803d' }}>
-          The AI agent system is working! Judge → Router → Creator agents automatically expand your ideas into blog posts, social threads, code projects, or AI-generated images.
+          The AI agent system is working! You select an idea → Router Agent decides format → Creator Agent generates content. Produces blog posts with images and social posts, or complete code projects with GitHub repos.
         </p>
       </div>
 

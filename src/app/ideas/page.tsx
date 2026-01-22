@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { NoCreditsRanner } from '@/components/credits/buy-credits-button';
 
 interface Idea {
   id: string;
@@ -11,6 +12,15 @@ interface Idea {
   output_id: string | null;
   output_format: string | null;
   output_created_at: string | null;
+}
+
+interface Usage {
+  freeRemaining: number;
+  paidRemaining: number;
+  totalRemaining: number;
+  totalUsed: number;
+  freeUsed: number;
+  paidUsed: number;
 }
 
 export default function IdeasPage() {
@@ -27,9 +37,14 @@ export default function IdeasPage() {
   const [expanding, setExpanding] = useState(false);
   const [expandingId, setExpandingId] = useState<string | null>(null);
 
-  // Fetch ideas on mount
+  // Usage state
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+
+  // Fetch ideas and usage on mount
   useEffect(() => {
     fetchIdeas();
+    fetchUsage();
   }, []);
 
   const fetchIdeas = async () => {
@@ -46,6 +61,22 @@ export default function IdeasPage() {
       setError(err.message || 'Failed to fetch ideas');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUsage = async () => {
+    try {
+      const response = await fetch('/api/usage');
+      const data = await response.json();
+
+      if (data.success) {
+        setUsage(data.usage);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch usage:', err);
+      // Don't show error to user, just silently fail
+    } finally {
+      setUsageLoading(false);
     }
   };
 
@@ -121,7 +152,6 @@ export default function IdeasPage() {
           // Show success with link to view output
           const formatEmoji =
             data.content?.format === 'blog_post' ? '📝' :
-            data.content?.format === 'twitter_thread' ? '🦣' :
             data.content?.format === 'github_repo' ? '💻' : '✨';
 
           setSuccess(
@@ -138,6 +168,9 @@ export default function IdeasPage() {
 
         // Refresh ideas to update status
         fetchIdeas();
+
+        // Refresh usage to show updated credits
+        fetchUsage();
       } else {
         setError(data.error || 'Failed to expand idea');
       }
@@ -158,6 +191,38 @@ export default function IdeasPage() {
       <p style={{ color: '#666', marginBottom: '30px' }}>
         Drop your raw thoughts here - the AI will expand them later
       </p>
+
+      {/* No Credits Banner */}
+      {!usageLoading && usage && usage.totalRemaining === 0 && (
+        <NoCreditsRanner
+          freeUsed={usage.freeUsed}
+          totalUsed={usage.totalUsed}
+        />
+      )}
+
+      {/* Credits Display */}
+      {!usageLoading && usage && usage.totalRemaining > 0 && (
+        <div style={{
+          padding: '12px 20px',
+          backgroundColor: '#f0f9ff',
+          border: '1px solid #0ea5e9',
+          borderRadius: '8px',
+          marginBottom: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <span style={{ fontSize: '20px' }}>💳</span>
+          <div>
+            <strong style={{ color: '#0369a1' }}>
+              {usage.totalRemaining} credit{usage.totalRemaining === 1 ? '' : 's'} remaining
+            </strong>
+            <span style={{ color: '#666', fontSize: '14px', marginLeft: '8px' }}>
+              ({usage.freeRemaining} free + {usage.paidRemaining} paid)
+            </span>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: '10px', marginBottom: '20px', backgroundColor: '#fee', border: '1px solid #fcc', borderRadius: '4px', color: '#c00' }}>
@@ -212,30 +277,13 @@ export default function IdeasPage() {
         </form>
       </div>
 
-      {/* Expand All Button */}
+      {/* Info banner for pending ideas */}
       {pendingIdeas.length > 0 && (
         <div style={{ marginBottom: '40px', padding: '20px', border: '2px solid #10b981', borderRadius: '8px', backgroundColor: '#ecfdf5' }}>
-          <h2 style={{ fontSize: '20px', marginBottom: '10px' }}>🤖 AI Agent Pipeline</h2>
-          <p style={{ color: '#666', marginBottom: '15px' }}>
-            {pendingIdeas.length} pending {pendingIdeas.length === 1 ? 'idea' : 'ideas'} ready to expand.
-            The AI will judge, route, and create content automatically!
+          <h2 style={{ fontSize: '20px', marginBottom: '10px' }}>💡 Ready to Expand</h2>
+          <p style={{ color: '#666', marginBottom: '0' }}>
+            You have {pendingIdeas.length} pending {pendingIdeas.length === 1 ? 'idea' : 'ideas'}. Click <strong>"✨ Expand This"</strong> on any idea below to generate a blog post or code project!
           </p>
-          <button
-            onClick={() => handleExpand()}
-            disabled={expanding}
-            style={{
-              padding: '12px 24px',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              backgroundColor: expanding ? '#ccc' : '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: expanding ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {expanding ? '🔄 Expanding...' : '✨ Expand Best Idea Now'}
-          </button>
         </div>
       )}
 

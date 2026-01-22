@@ -10,8 +10,8 @@ import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publ
  * Purpose: Route to the appropriate creator based on format
  *
  * This agent receives:
- * - The selected idea (from Judge)
- * - The chosen format (from Router)
+ * - The selected idea (chosen by user)
+ * - The chosen format (from Router Agent)
  *
  * It delegates to the format-specific creator:
  * - blog_post → Cell-based blog creator (plan → generate → review + images + social share)

@@ -15,10 +15,10 @@ const RouterResponseSchema = z.object({
 /**
  * ROUTER AGENT
  *
- * Purpose: Decide the best output format for the selected idea
+ * Purpose: Decide the best output format for the user-selected idea
  *
  * How it works:
- * 1. Receives the selected idea from Judge Agent
+ * 1. Receives the idea selected by the user
  * 2. Analyzes the idea's content and characteristics
  * 3. Decides which format would work best:
  *    - Blog: Written content (explanations, tutorials, tips) with optional images and social share
@@ -49,7 +49,7 @@ export async function routerAgent(
 
     return {
       chosenFormat: null,
-      formatReasoning: 'No idea was selected by Judge',
+      formatReasoning: 'No idea was provided for routing',
       errors: ['Cannot route: no idea selected'],
     };
   }
