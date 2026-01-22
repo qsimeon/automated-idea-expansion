@@ -166,44 +166,58 @@ function BlogViewer({ content }: { content: any }) {
         </div>
       </div>
 
-      {/* Featured Image (if first image exists) */}
-      {content.images && content.images.length > 0 && content.images[0] && (
+      {/* V3: Cell-Based Rendering */}
+      {content.cells ? (
         <div style={{
-          marginBottom: '30px',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          border: '1px solid #e5e7eb'
-        }}>
-          <img
-            src={content.images[0].imageUrl}
-            alt={content.images[0].caption}
-            style={{ width: '100%', height: 'auto', display: 'block' }}
-          />
-          {content.images[0].caption && (
-            <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
-              <p style={{
-                margin: 0,
-                fontSize: '14px',
-                color: '#6b7280',
-                fontStyle: 'italic'
-              }}>
-                {content.images[0].caption}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div
-        style={{
           fontSize: '18px',
           lineHeight: '1.8',
           color: '#374151',
-        }}
-        dangerouslySetInnerHTML={{
-          __html: parseMarkdown(content.markdown),
-        }}
-      />
+        }}>
+          {content.cells.map((cell: any, index: number) => renderBlogCell(cell, index))}
+        </div>
+      ) : (
+        <>
+          {/* V2: Markdown-Based Rendering (Backward Compatibility) */}
+          {/* Featured Image (if first image exists) */}
+          {content.images && content.images.length > 0 && content.images[0] && (
+            <div style={{
+              marginBottom: '30px',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              border: '1px solid #e5e7eb'
+            }}>
+              <img
+                src={content.images[0].imageUrl}
+                alt={content.images[0].caption}
+                style={{ width: '100%', height: 'auto', display: 'block' }}
+              />
+              {content.images[0].caption && (
+                <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
+                  <p style={{
+                    margin: 0,
+                    fontSize: '14px',
+                    color: '#6b7280',
+                    fontStyle: 'italic'
+                  }}>
+                    {content.images[0].caption}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              fontSize: '18px',
+              lineHeight: '1.8',
+              color: '#374151',
+            }}
+            dangerouslySetInnerHTML={{
+              __html: parseMarkdown(content.markdown),
+            }}
+          />
+        </>
+      )}
 
       {/* Social Media Share Section */}
       {content.socialPost && (
@@ -483,4 +497,99 @@ function parseMarkdown(markdown: string): string {
   html = html.replace(/(<\/h[1-6]>)<\/p>/g, '$1');
 
   return html;
+}
+
+// Cell-based rendering (for V3 blogs)
+function renderMarkdownBlock(block: any, key: number) {
+  switch (block.blockType) {
+    case 'h1':
+      return <h1 key={key} style={{ fontSize: '32px', margin: '20px 0 15px 0', fontWeight: '700' }}>{block.text}</h1>;
+    case 'h2':
+      return <h2 key={key} style={{ fontSize: '26px', margin: '30px 0 12px 0', fontWeight: '600' }}>{block.text}</h2>;
+    case 'h3':
+      return <h3 key={key} style={{ fontSize: '22px', margin: '24px 0 10px 0', fontWeight: '600' }}>{block.text}</h3>;
+    case 'paragraph':
+      return <p key={key} style={{ marginBottom: '16px', lineHeight: '1.8' }}>{block.text}</p>;
+    case 'bulletList':
+      return (
+        <ul key={key} style={{ marginBottom: '16px', paddingLeft: '24px' }}>
+          {block.items.map((item: string, i: number) => (
+            <li key={i} style={{ marginBottom: '8px', lineHeight: '1.6' }}>{item}</li>
+          ))}
+        </ul>
+      );
+    case 'numberedList':
+      return (
+        <ol key={key} style={{ marginBottom: '16px', paddingLeft: '24px' }}>
+          {block.items.map((item: string, i: number) => (
+            <li key={i} style={{ marginBottom: '8px', lineHeight: '1.6' }}>{item}</li>
+          ))}
+        </ol>
+      );
+    case 'codeBlock':
+      return (
+        <pre key={key} style={{
+          backgroundColor: '#1e1e1e',
+          color: '#d4d4d4',
+          padding: '16px',
+          borderRadius: '8px',
+          overflow: 'auto',
+          marginBottom: '16px',
+          fontSize: '14px',
+          lineHeight: '1.6'
+        }}>
+          <code className={`language-${block.language}`}>
+            {block.lines.join('\n')}
+          </code>
+        </pre>
+      );
+    case 'hr':
+      return <hr key={key} style={{ margin: '30px 0', border: 'none', borderTop: '2px solid #e5e7eb' }} />;
+    default:
+      return null;
+  }
+}
+
+function renderBlogCell(cell: any, index: number) {
+  if (cell.cellType === 'markdown') {
+    return (
+      <div key={index}>
+        {cell.blocks.map((block: any, blockIndex: number) =>
+          renderMarkdownBlock(block, blockIndex)
+        )}
+      </div>
+    );
+  } else if (cell.cellType === 'image') {
+    // Skip if image URL is empty (failed generation)
+    if (!cell.imageUrl) return null;
+
+    return (
+      <div key={index} style={{
+        margin: '30px 0',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        border: '1px solid #e5e7eb'
+      }}>
+        <img
+          src={cell.imageUrl}
+          alt={cell.caption}
+          style={{ width: '100%', height: 'auto', display: 'block' }}
+        />
+        {cell.caption && (
+          <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
+            <p style={{
+              margin: 0,
+              fontSize: '14px',
+              color: '#6b7280',
+              fontStyle: 'italic'
+            }}>
+              {cell.caption}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }
