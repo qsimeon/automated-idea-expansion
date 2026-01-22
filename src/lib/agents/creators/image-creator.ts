@@ -1,5 +1,5 @@
-import { createModel, ModelRecommendations } from '../model-factory';
-import type { AIImage, ImageSpec, GeneratedImage } from '../types';
+import { createModel, IMAGE_PROMPT_MODEL } from '../model-factory';
+import type { ImageSpec, GeneratedImage } from '../types';
 
 /**
  * IMAGE GENERATION SUBAGENT
@@ -25,7 +25,7 @@ import type { AIImage, ImageSpec, GeneratedImage } from '../types';
  * Maintained for backward compatibility
  */
 export async function createAIImage(idea: any): Promise<{
-  content: AIImage;
+  content: GeneratedImage;
   tokensUsed: number;
 }> {
   // Convert idea to ImageSpec
@@ -40,13 +40,7 @@ export async function createAIImage(idea: any): Promise<{
   const generatedImage = await generateImageForContent(spec);
 
   return {
-    content: {
-      prompt: generatedImage.prompt,
-      imageUrl: generatedImage.imageUrl,
-      model: generatedImage.model,
-      width: generatedImage.width,
-      height: generatedImage.height,
-    },
+    content: generatedImage,
     tokensUsed: 0, // Estimate if needed
   };
 }
@@ -59,7 +53,7 @@ export async function createImagePrompt(
   spec: ImageSpec,
   contentContext?: string // Optional context from blog/thread
 ): Promise<string> {
-  const model = createModel(ModelRecommendations.imagePrompts, 0.9); // High creativity
+  const model = createModel(IMAGE_PROMPT_MODEL, 0.9); // High creativity
 
   const prompt = `Create a detailed image generation prompt for this concept:
 

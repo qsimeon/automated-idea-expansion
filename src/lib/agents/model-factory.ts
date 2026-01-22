@@ -54,27 +54,7 @@ export function createModel(type: ModelType, temperature: number = 0.7) {
 }
 
 /**
- * Model recommendations by task
- * Use these constants for consistency across the codebase
+ * Model recommendation for image prompt generation
+ * GPT-4o-mini is fast, cheap, and good at creative prompt engineering
  */
-export const ModelRecommendations = {
-  planning: 'gpt-4o-mini' as ModelType, // Fast, cheap, good at structure
-  textGeneration: 'claude-haiku' as ModelType, // Excellent writing
-  imagePrompts: 'gpt-4o-mini' as ModelType, // Creative prompts
-  review: 'gpt-4o-mini' as ModelType, // Fast validation
-  coding: 'claude-sonnet' as ModelType, // Best at code
-} as const;
-
-/**
- * Get estimated cost per 1K tokens (rough averages)
- * Useful for cost tracking and optimization decisions
- */
-export function getModelCost(type: ModelType): { input: number; output: number } {
-  const costs = {
-    'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-    'claude-haiku': { input: 0.00025, output: 0.00125 },
-    'claude-sonnet': { input: 0.003, output: 0.015 },
-  };
-
-  return costs[type];
-}
+export const IMAGE_PROMPT_MODEL: ModelType = 'gpt-4o-mini';

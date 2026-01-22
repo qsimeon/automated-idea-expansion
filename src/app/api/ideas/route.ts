@@ -56,7 +56,6 @@ export async function POST(request: Request) {
       title: body.title?.trim() || undefined,
       description: body.description?.trim() || undefined,
       bullets: Array.isArray(body.bullets) ? body.bullets.filter((b: any) => typeof b === 'string' && b.trim()) : undefined,
-      external_links: Array.isArray(body.external_links) ? body.external_links.filter((l: any) => typeof l === 'string' && l.trim()) : undefined,
     };
 
     const idea = await createIdea(TEST_USER_ID, input);

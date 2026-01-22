@@ -1,9 +1,10 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { generateImageForContent } from './image-creator';
-import type { Idea, ThreadPlan, ThreadDraft, ThreadReview, ThreadCreationState } from '../types';
+import type { ThreadPlan, ThreadDraft, ThreadReview, ThreadCreationState } from '../types';
 import { z } from 'zod';
 import { createLogger } from '@/lib/logging/logger';
+import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
 
 /**
  * MASTODON/THREAD CREATOR V2
@@ -25,16 +26,28 @@ const ThreadPlanSchema = z.object({
   imageSpec: z.object({
     placement: z.string(),
     concept: z.string(),
-    style: z.string().optional(),
-    aspectRatio: z.enum(['16:9', '1:1', '4:3']).optional(),
-  }).optional(),
+    style: z.string().default('photorealistic'),
+    aspectRatio: z.enum(['16:9', '1:1', '4:3']).default('16:9'),
+  }).nullable(), // Use nullable instead of optional for OpenAI compatibility
   keyPoints: z.array(z.string()),
   tone: z.string(),
   qualityRubric: z.object({
-    dimensions: z.record(z.object({
+    hookStrength: z.object({
       weight: z.number(),
       criteria: z.array(z.string()),
-    })),
+    }),
+    flow: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
+    engagement: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
+    charCountCompliance: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
   }),
 });
 
@@ -61,8 +74,11 @@ const ThreadReviewSchema = z.object({
 // ===== MAIN CREATOR FUNCTION =====
 
 export async function createMastodonThreadV2(
-  idea: Idea
+  ideaData: unknown
 ): Promise<{ content: any; tokensUsed: number }> {
+  // Validate idea with schema - "schemas all the way down"
+  const idea = IdeaCreatorSchema.parse(ideaData);
+
   const logger = createLogger({
     ideaId: idea.id,
     stage: 'mastodon-creator',
@@ -70,7 +86,7 @@ export async function createMastodonThreadV2(
 
   logger.info('=== MASTODON THREAD CREATOR V2 STARTED ===', {
     ideaTitle: idea.title,
-    ideaDescription: idea.description?.substring(0, 100),
+    bulletsCount: idea.bullets?.length || 0,
   });
 
   const state: ThreadCreationState = {
@@ -185,7 +201,7 @@ export async function createMastodonThreadV2(
 
 // ===== STAGE 1: PLANNING AGENT =====
 
-async function planThread(idea: Idea, logger: ReturnType<typeof createLogger>): Promise<{ plan: ThreadPlan; tokensUsed: number }> {
+async function planThread(idea: IdeaForCreator, logger: ReturnType<typeof createLogger>): Promise<{ plan: ThreadPlan; tokensUsed: number }> {
   const modelName = 'gpt-4o-mini';
   logger.info('Planning: Initializing model', { model: modelName, temperature: 0.7 });
 
@@ -198,7 +214,6 @@ async function planThread(idea: Idea, logger: ReturnType<typeof createLogger>): 
 
   const prompt = `Plan a Mastodon thread for: "${idea.title}"
 
-${idea.description ? `Description: ${idea.description}` : ''}
 ${idea.bullets && idea.bullets.length > 0 ? `Key Points:\n${idea.bullets.map(b => `- ${b}`).join('\n')}` : ''}
 
 Create a comprehensive plan:
@@ -260,12 +275,10 @@ Return a detailed plan.`;
         keyPoints: idea.bullets || ['Introduction', 'Main point', 'Key insight', 'Application', 'Conclusion'],
         tone: 'informative',
         qualityRubric: {
-          dimensions: {
-            hookStrength: { weight: 0.4, criteria: ['Grabs attention', 'Sets clear expectations'] },
-            flow: { weight: 0.25, criteria: ['Logical progression', 'Smooth transitions'] },
-            engagement: { weight: 0.25, criteria: ['Valuable insights', 'Clear explanations'] },
-            charCountCompliance: { weight: 0.1, criteria: ['All posts ≤500 chars'] },
-          },
+          hookStrength: { weight: 0.4, criteria: ['Grabs attention', 'Sets clear expectations'] },
+          flow: { weight: 0.25, criteria: ['Logical progression', 'Smooth transitions'] },
+          engagement: { weight: 0.25, criteria: ['Valuable insights', 'Clear explanations'] },
+          charCountCompliance: { weight: 0.1, criteria: ['All posts ≤500 chars'] },
         },
       },
       tokensUsed: 0,
@@ -277,7 +290,7 @@ Return a detailed plan.`;
 
 async function generateThread(
   plan: ThreadPlan,
-  idea: Idea,
+  idea: IdeaForCreator,
   logger: ReturnType<typeof createLogger>
 ): Promise<{ draft: ThreadDraft; tokensUsed: number }> {
   let totalTokens = 0;

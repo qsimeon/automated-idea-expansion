@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { z } from 'zod';
 import { createLogger } from '@/lib/logging/logger';
+import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
 
 /**
  * BLOG CREATOR V2 - Multi-Stage Pipeline with Images
@@ -41,16 +42,26 @@ const BlogPlanSchema = z.object({
     z.object({
       placement: z.string(),
       concept: z.string(),
-      style: z.string().optional(),
+      style: z.string().default('photorealistic'), // OpenAI requires all fields to be required
     })
   ),
   qualityRubric: z.object({
-    dimensions: z.record(
-      z.object({
-        weight: z.number(),
-        criteria: z.array(z.string()),
-      })
-    ),
+    clarity: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
+    accuracy: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
+    engagement: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
+    imageRelevance: z.object({
+      weight: z.number(),
+      criteria: z.array(z.string()),
+    }),
   }),
 });
 
@@ -76,10 +87,13 @@ const BlogReviewSchema = z.object({
 /**
  * Main entry point for blog creation
  */
-export async function createBlogV2(idea: any): Promise<{
+export async function createBlogV2(ideaData: unknown): Promise<{
   content: any; // BlogDraft but adapted to match existing BlogPost interface
   tokensUsed: number;
 }> {
+  // Validate idea with schema - "schemas all the way down"
+  const idea = IdeaCreatorSchema.parse(ideaData);
+
   const logger = createLogger({
     ideaId: idea.id,
     stage: 'blog-creator',
@@ -87,7 +101,7 @@ export async function createBlogV2(idea: any): Promise<{
 
   logger.info('=== BLOG CREATOR V2 STARTED ===', {
     ideaTitle: idea.title,
-    ideaDescription: idea.description?.substring(0, 100),
+    bulletsCount: idea.bullets?.length || 0,
   });
 
   const state: BlogCreationState = {
@@ -200,7 +214,7 @@ export async function createBlogV2(idea: any): Promise<{
  * STAGE 1: Planning Agent
  * Decides structure, tone, sections, and whether to include images
  */
-async function planBlog(idea: any, logger: ReturnType<typeof createLogger>): Promise<{
+async function planBlog(idea: IdeaForCreator, logger: ReturnType<typeof createLogger>): Promise<{
   plan: BlogPlan;
   tokensUsed: number;
 }> {
@@ -216,8 +230,7 @@ async function planBlog(idea: any, logger: ReturnType<typeof createLogger>): Pro
 
   const prompt = `Plan a blog post for: "${idea.title}"
 
-${idea.description ? `Description: ${idea.description}` : ''}
-${idea.bullets ? `Key Points: ${JSON.stringify(idea.bullets)}` : ''}
+${idea.bullets && idea.bullets.length > 0 ? `Key Points:\n${idea.bullets.map(b => `- ${b}`).join('\n')}` : ''}
 
 Create a comprehensive plan including:
 1. Engaging title (can refine the original)
@@ -258,12 +271,10 @@ Return a detailed plan.`;
         includeImages: false,
         imageSpecs: [],
         qualityRubric: {
-          dimensions: {
-            clarity: { weight: 0.4, criteria: ['Clear writing', 'Well-structured'] },
-            accuracy: { weight: 0.3, criteria: ['Factually correct'] },
-            engagement: { weight: 0.2, criteria: ['Engaging to read'] },
-            imageRelevance: { weight: 0.1, criteria: ['Images enhance content'] },
-          },
+          clarity: { weight: 0.4, criteria: ['Clear writing', 'Well-structured'] },
+          accuracy: { weight: 0.3, criteria: ['Factually correct'] },
+          engagement: { weight: 0.2, criteria: ['Engaging to read'] },
+          imageRelevance: { weight: 0.1, criteria: ['Images enhance content'] },
         },
       },
       tokensUsed: 0,
@@ -277,7 +288,7 @@ Return a detailed plan.`;
  */
 async function generateBlog(
   plan: BlogPlan,
-  idea: any,
+  idea: IdeaForCreator,
   logger: ReturnType<typeof createLogger>
 ): Promise<{ draft: BlogDraft; tokensUsed: number }> {
   let totalTokens = 0;
@@ -298,9 +309,7 @@ Title: ${plan.title}
 Sections: ${plan.sections.join(', ')}
 Tone: ${plan.tone}
 
-Original Idea Context:
-${idea.description || 'No additional context'}
-${idea.bullets ? `Key Points: ${JSON.stringify(idea.bullets)}` : ''}
+${idea.bullets && idea.bullets.length > 0 ? `Key Points:\n${idea.bullets.map(b => `- ${b}`).join('\n')}` : ''}
 
 Requirements:
 - Use markdown format

@@ -44,7 +44,6 @@ export async function judgeAgent(
     candidates: allIdeas?.map(i => ({
       id: i.id,
       title: i.title,
-      timesEvaluated: i.times_evaluated,
     })),
   });
 
@@ -222,10 +221,6 @@ ID: ${idea.id}
 Title: ${idea.title}
 Description: ${idea.description || 'No description'}
 Bullets: ${JSON.stringify(idea.bullets) || 'None'}
-External Links: ${JSON.stringify(idea.external_links) || 'None'}
-Times Previously Evaluated: ${idea.times_evaluated}
-Last Evaluated: ${idea.last_evaluated_at || 'Never'}
-Current Priority Score: ${idea.priority_score}
 `
   )
   .join('\n')}
@@ -239,7 +234,6 @@ Respond with ONLY valid JSON in this exact format:
 
 Important:
 - Select the idea with highest overall potential
-- If ideas are similar quality, prefer ones evaluated less often
 - Be honest and critical in your evaluation
 - The reasoning should be specific to the selected idea`;
 }

@@ -221,23 +221,21 @@ Routes to:
 **Supported Models:**
 ```typescript
 type ModelType =
-  | 'gpt-5-nano'      // Ultra-cheap planning/review
-  | 'gpt-4o-mini'     // Fast, cost-effective
-  | 'claude-haiku'    // Fast, excellent writing
-  | 'claude-sonnet';  // Best coding/writing
+  | 'gpt-4o-mini'     // Fast, cost-effective ($0.15/1M input)
+  | 'claude-haiku'    // Fast, excellent writing ($0.25/1M input)
+  | 'claude-sonnet';  // Best coding/writing ($3/1M input)
 ```
 
 **Usage:**
 ```typescript
-import { createModel, ModelRecommendations } from './model-factory';
+import { createModel, IMAGE_PROMPT_MODEL } from './model-factory';
 
-// Recommended way:
-const model = createModel(ModelRecommendations.planning, 0.7);
+// Use the recommended constant for image prompts:
+const model = createModel(IMAGE_PROMPT_MODEL, 0.9);
 
-// Explicit way:
+// Or be explicit:
 const model = createModel('gpt-4o-mini', 0.7);
 ```
-- Graceful degradation for reliability
 
 **Files:** `src/lib/agents/model-factory.ts`
 
@@ -370,37 +368,86 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 ---
 
-## File Structure
+## File Structure → Implementation Map
+
+**How the architecture maps to actual code:**
 
 ```
-src/lib/agents/
-├── types.ts                          # Shared types (AgentState, BlogPlan, etc.)
-├── model-factory.ts                  # Model selection (OpenAI + Anthropic)
-├── router-agent.ts                   # Format routing
-├── creator-agent.ts                  # Creator orchestrator
+src/
+├── app/                              # Next.js frontend
+│   ├── api/
+│   │   ├── ideas/route.ts            # Create/list ideas (starts here 📥)
+│   │   └── expand/route.ts           # Trigger pipeline (🚀 entry point)
+│   ├── page.tsx                      # Idea input UI
+│   └── outputs/page.tsx              # View generated content
 │
-├── creators/
-│   ├── blog-creator-v2.ts            # ✨ Multi-stage blog pipeline
-│   ├── blog-creator.ts.deprecated    # Old version (kept for reference)
-│   ├── mastodon-creator.ts           # Thread creation
-│   ├── image-creator.ts              # ✨ Image subagent (refactored)
+├── lib/
+│   ├── db/
+│   │   ├── schemas.ts                # ✅ Cleaned! IdeaSchema only
+│   │   ├── types.ts                  # DB interfaces (Idea, Output)
+│   │   ├── queries.ts                # Supabase CRUD operations
+│   │   └── supabase.ts               # DB client
 │   │
-│   └── code/
-│       ├── types.ts                  # Code-specific types (QualityRubric, etc.)
-│       ├── code-creator-v2.ts        # ✨ Code orchestrator with iteration
-│       ├── planning-agent.ts         # ✨ Enhanced with rubrics
-│       ├── generation-agent.ts       # Code generation
-│       ├── critic-agent.ts           # ✨ Review with actionable feedback
-│       └── fixer-agent.ts            # ✨ Targeted file fixes
+│   ├── agents/                       # 🧠 The AI pipeline
+│   │   ├── types.ts                  # Agent state, plans, rubrics
+│   │   ├── model-factory.ts          # ✅ Cleaned! Model selection
+│   │   ├── judge-agent.ts            # 📊 Pick best idea
+│   │   ├── router-agent.ts           # 🎯 Choose format
+│   │   ├── creator-agent.ts          # Orchestrates format creators
+│   │   │
+│   │   ├── creators/
+│   │   │   ├── blog-creator-v2.ts    # 📝 3-stage blog pipeline
+│   │   │   ├── mastodon-creator-v2.ts# 🦣 3-stage thread pipeline
+│   │   │   ├── image-creator.ts      # 🎨 Image generation subagent
+│   │   │   │
+│   │   │   └── code/                 # 💻 Code creation (advanced)
+│   │   │       ├── types.ts          # Code-specific types
+│   │   │       ├── code-creator-v2.ts# 5-stage orchestrator
+│   │   │       ├── planning-agent.ts # Plan with quality rubrics
+│   │   │       ├── generation-agent.ts# Generate all files
+│   │   │       ├── critic-agent.ts   # Review with scoring
+│   │   │       └── fixer-agent.ts    # Fix specific files
+│   │   │
+│   │   └── publishers/
+│   │       ├── github-publisher.ts   # Publish to GitHub
+│   │       └── mastodon-publisher.ts # Publish threads
+│   │
+│   └── logging/
+│       └── logger.ts                 # Centralized logger with context
 │
-└── publishers/
-    ├── github-publisher.ts           # Publish code to GitHub
-    └── mastodon-publisher.ts         # Publish threads to Mastodon
+└── docs/
+    ├── ARCHITECTURE.md               # 👈 This file (complete guide)
+    └── README.md                     # Quick start
+
 ```
 
-**Legend:**
-- ✨ = New or significantly enhanced
-- .deprecated = Old version (kept for reference)
+**The Pipeline Flow Through Files:**
+
+```
+1. User creates idea
+   └─ app/page.tsx → api/ideas/route.ts → db/queries.ts
+
+2. User clicks "Expand"
+   └─ api/expand/route.ts (📥) creates logger, starts pipeline
+
+3. Judge selects best idea
+   └─ agents/judge-agent.ts (📊) evaluates all pending ideas
+
+4. Router chooses format
+   └─ agents/router-agent.ts (🎯) decides blog/thread/code
+
+5. Creator orchestrates format-specific pipeline
+   └─ agents/creator-agent.ts routes to:
+      ├─ creators/blog-creator-v2.ts (📝)
+      ├─ creators/mastodon-creator-v2.ts (🦣)
+      └─ creators/code/code-creator-v2.ts (💻)
+
+6. Save output
+   └─ db/queries.ts stores generated content
+
+7. User views result
+   └─ app/outputs/page.tsx displays notebook
+```
 
 ---
 
@@ -527,15 +574,49 @@ const logger = createLogger({ stage: 'blog-creator' });
 const duration = logger.getDuration();  // milliseconds since creation
 ```
 
-### Future Enhancements
+### Emoji Quick Reference
 
-**Production Logging Infrastructure:**
-- Structured JSON output mode for machine parsing
-- Integration with log aggregation services (Datadog, Splunk, CloudWatch)
-- Persistent file logging with rotation
-- Real-time log streaming to frontend for user visibility
-- Automated alerting based on error patterns
-- Cost optimization tracking and alerts
+Logs use emojis for quick visual scanning. Here are the key ones:
+
+**Pipeline Flow:**
+- 📥 Request received (API) → 🚀 Pipeline starting → 📊 Judging ideas → 🎯 Routing format
+- 📝 Blog creation | 🦣 Thread creation | 💻 Code creation
+
+**Creator Stages:**
+- 📋 Planning → 🛠️ Generation → 🔍 Review → 🔄 Iteration (code only)
+- 🎨 Image generation (within blogs/threads)
+
+**Status:**
+- ✅ Success | ❌ Error | ⚠️ Warning | 💾 Saved
+- 💰 Token usage | 🐛 Issues found
+
+**Pro tip:** Search logs by emoji to jump to specific stages (e.g., search "🔍" to see all reviews).
+
+---
+
+## Output Structure
+
+All generated content follows a **cell-based notebook format**, inspired by Jupyter notebooks. This makes outputs:
+- **Structured**: Clear separation of content types
+- **Portable**: Easy to transform to different formats
+- **Traceable**: Each cell has metadata
+
+**Cell Types:**
+```typescript
+// Markdown cells: Headers, paragraphs, lists, quotes
+{ cellType: 'markdown', blocks: [...] }
+
+// Code cells: Executable code lines
+{ cellType: 'code', language: 'python', lines: [...] }
+
+// Image cells: Generated images with captions
+{ cellType: 'image', url: '...', caption: '...', alt: '...' }
+```
+
+**Philosophy: "Atoms, not strings"**
+Instead of dumping raw markdown, the LLM must structure content into atomic blocks (h1, h2, paragraph, bulletList, etc.). This forces better structure and makes validation easy.
+
+**Files:** `src/lib/db/types.ts` (output interfaces), `src/lib/agents/types.ts` (creator schemas)
 
 ---
 
@@ -643,5 +724,5 @@ npm install @langchain/google-genai --legacy-peer-deps
 
 ---
 
-**Last Updated:** January 21, 2026
-**Version:** 2.0 (Multi-Stage Pipeline Architecture)
+**Last Updated:** January 22, 2026
+**Version:** 2.1 (Consolidated Documentation + Codebase Cleanup)

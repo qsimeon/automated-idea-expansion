@@ -88,10 +88,7 @@ export async function createIdea(
       title,
       description,
       bullets: input.bullets || [],
-      external_links: input.external_links || [],
       status: 'pending',
-      priority_score: 0,
-      times_evaluated: 0,
     })
     .select()
     .single();
@@ -153,7 +150,6 @@ export async function getPendingIdeas(userId: string): Promise<Idea[]> {
     .select('*')
     .eq('user_id', userId)
     .eq('status', 'pending')
-    .order('priority_score', { ascending: false })
     .order('created_at', { ascending: false });
 
   if (error) {

@@ -89,19 +89,6 @@ export async function PUT(
       input.bullets = body.bullets.filter((b: any) => typeof b === 'string' && b.trim());
     }
 
-    if (body.external_links !== undefined) {
-      if (!Array.isArray(body.external_links)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'External links must be an array',
-          },
-          { status: 400 }
-        );
-      }
-      input.external_links = body.external_links.filter((l: any) => typeof l === 'string' && l.trim());
-    }
-
     if (body.status !== undefined) {
       if (!['pending', 'expanded', 'archived'].includes(body.status)) {
         return NextResponse.json(

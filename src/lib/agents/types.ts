@@ -1,5 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Idea } from '../db/types';
+import type { IdeaForCreator } from '../db/schemas';
 import type { Logger } from '../logging/logger';
 
 /**
@@ -93,52 +94,6 @@ export const AgentState = Annotation.Root({
  */
 export type AgentStateType = typeof AgentState.State;
 
-/**
- * Blog post structure
- */
-export interface BlogPost {
-  title: string;
-  markdown: string;
-  wordCount: number;
-  readingTimeMinutes: number;
-}
-
-/**
- * Mastodon thread structure
- */
-export interface MastodonThread {
-  posts: Array<{
-    order: number;
-    text: string; // Max 500 chars
-  }>;
-  totalPosts: number;
-}
-
-/**
- * Code project structure
- */
-export interface CodeProject {
-  type: 'nodejs' | 'python'; // Extensible to other types
-  repoName: string;
-  description: string;
-  files: Array<{
-    path: string;
-    content: string;
-  }>;
-  readme: string;
-}
-
-/**
- * AI-generated image structure
- */
-export interface AIImage {
-  prompt: string;
-  imageUrl: string;
-  model: string; // Which model generated it (flux, sdxl, etc)
-  width: number;
-  height: number;
-}
-
 // ===== ENHANCED CONTENT PIPELINE SCHEMAS =====
 
 /**
@@ -175,7 +130,7 @@ export interface BlogPlan {
   targetWordCount: number; // 1000-2000
   includeImages: boolean;
   imageSpecs: ImageSpec[]; // Where and what images to generate
-  qualityRubric: ContentQualityRubric;
+  qualityRubric: BlogQualityRubric;
 }
 
 export interface BlogDraft {
@@ -212,7 +167,7 @@ export interface ThreadPlan {
   imageSpec?: ImageSpec; // Hero image spec
   keyPoints: string[]; // Main points to cover
   tone: string; // "informative", "entertaining", etc.
-  qualityRubric: ContentQualityRubric;
+  qualityRubric: ThreadQualityRubric;
 }
 
 export interface ThreadDraft {
@@ -242,12 +197,43 @@ export interface ThreadReview {
  * QUALITY RUBRIC (Shared across content types)
  */
 
-export interface ContentQualityRubric {
-  dimensions: {
-    [key: string]: {
-      weight: number; // 0.0-1.0
-      criteria: string[];
-    };
+// Blog quality rubric
+export interface BlogQualityRubric {
+  clarity: {
+    weight: number;
+    criteria: string[];
+  };
+  accuracy: {
+    weight: number;
+    criteria: string[];
+  };
+  engagement: {
+    weight: number;
+    criteria: string[];
+  };
+  imageRelevance: {
+    weight: number;
+    criteria: string[];
+  };
+}
+
+// Thread quality rubric
+export interface ThreadQualityRubric {
+  hookStrength: {
+    weight: number;
+    criteria: string[];
+  };
+  flow: {
+    weight: number;
+    criteria: string[];
+  };
+  engagement: {
+    weight: number;
+    criteria: string[];
+  };
+  charCountCompliance: {
+    weight: number;
+    criteria: string[];
   };
 }
 
@@ -256,7 +242,7 @@ export interface ContentQualityRubric {
  */
 
 export interface BlogCreationState {
-  idea: Idea;
+  idea: IdeaForCreator;
   plan: BlogPlan | null;
   draft: BlogDraft | null;
   review: BlogReview | null;
@@ -267,7 +253,7 @@ export interface BlogCreationState {
 }
 
 export interface ThreadCreationState {
-  idea: Idea;
+  idea: IdeaForCreator;
   plan: ThreadPlan | null;
   draft: ThreadDraft | null;
   review: ThreadReview | null;
