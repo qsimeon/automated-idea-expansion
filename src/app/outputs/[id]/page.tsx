@@ -166,58 +166,14 @@ function BlogViewer({ content }: { content: any }) {
         </div>
       </div>
 
-      {/* V3: Cell-Based Rendering */}
-      {content.cells ? (
-        <div style={{
-          fontSize: '18px',
-          lineHeight: '1.8',
-          color: '#374151',
-        }}>
-          {content.cells.map((cell: any, index: number) => renderBlogCell(cell, index))}
-        </div>
-      ) : (
-        <>
-          {/* V2: Markdown-Based Rendering (Backward Compatibility) */}
-          {/* Featured Image (if first image exists) */}
-          {content.images && content.images.length > 0 && content.images[0] && (
-            <div style={{
-              marginBottom: '30px',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              border: '1px solid #e5e7eb'
-            }}>
-              <img
-                src={content.images[0].imageUrl}
-                alt={content.images[0].caption}
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-              />
-              {content.images[0].caption && (
-                <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#6b7280',
-                    fontStyle: 'italic'
-                  }}>
-                    {content.images[0].caption}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div
-            style={{
-              fontSize: '18px',
-              lineHeight: '1.8',
-              color: '#374151',
-            }}
-            dangerouslySetInnerHTML={{
-              __html: parseMarkdown(content.markdown),
-            }}
-          />
-        </>
-      )}
+      {/* Cell-Based Rendering */}
+      <div style={{
+        fontSize: '18px',
+        lineHeight: '1.8',
+        color: '#374151',
+      }}>
+        {content.cells.map((cell: any, index: number) => renderBlogCell(cell, index))}
+      </div>
 
       {/* Social Media Share Section */}
       {content.socialPost && (
@@ -452,56 +408,7 @@ function CodeViewer({ content }: { content: any }) {
   );
 }
 
-// Note: ImageViewer removed - images are now components within blogs/threads, not standalone formats
-
-// Simple markdown parser (for blog posts)
-function parseMarkdown(markdown: string): string {
-  let html = markdown;
-
-  // Headers
-  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-
-  // Bold
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-  // Italic
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-  // Code blocks
-  html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-
-  // Inline code
-  html = html.replace(/`(.*?)`/g, '<code>$1</code>');
-
-  // Images with proper styling (must come before links to avoid conflict)
-  html = html.replace(
-    /!\[(.*?)\]\((.*?)\)/g,
-    '<div style="margin: 30px 0; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">' +
-      '<img src="$2" alt="$1" style="width: 100%; height: auto; display: block;" />' +
-      '<div style="padding: 12px 16px; background-color: #f9fafb;">' +
-        '<p style="margin: 0; font-size: 14px; color: #6b7280; font-style: italic;">$1</p>' +
-      '</div>' +
-    '</div>'
-  );
-
-  // Links
-  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-
-  // Clean up
-  html = html.replace(/<p><\/p>/g, '');
-  html = html.replace(/<p>(<h[1-6]>)/g, '$1');
-  html = html.replace(/(<\/h[1-6]>)<\/p>/g, '$1');
-
-  return html;
-}
-
-// Cell-based rendering (for V3 blogs)
+// Cell-based rendering functions
 function renderMarkdownBlock(block: any, key: number) {
   switch (block.blockType) {
     case 'h1':

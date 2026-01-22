@@ -23,7 +23,7 @@ const SocialMediaPostSchema = z.object({
   hashtags: z.array(z.string()).min(2).max(3).describe('2-3 relevant hashtags (without # prefix)'),
   platform: z.enum(['twitter', 'mastodon', 'linkedin']).describe('Target platform'),
   includeImage: z.boolean().describe('Whether to generate an image for this post'),
-  imagePrompt: z.string().optional().describe('Prompt for image generation (if includeImage=true)'),
+  imagePrompt: z.string().default('').describe('Prompt for image generation (empty string if includeImage=false)'),
 });
 
 type SocialMediaPost = z.infer<typeof SocialMediaPostSchema>;

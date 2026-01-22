@@ -1,6 +1,6 @@
 import type { AgentStateType } from './types';
 import type { Logger } from '../logging/logger';
-import { createBlogV2 } from './creators/blog-creator-v2'; // V2: Multi-stage with images and social share
+import { createBlog } from './creators/blog/blog-creator'; // Cell-based with images and social share
 import { createCodeProjectV2 } from './creators/code/code-creator-v2'; // Multi-stage code creator
 import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publisher';
 
@@ -14,8 +14,8 @@ import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publ
  * - The chosen format (from Router)
  *
  * It delegates to the format-specific creator:
- * - blog_post → blogCreator-v2 (with plan → generate → review + images + social share)
- * - github_repo → codeCreator-v2 (with plan → generate → review → iterate)
+ * - blog_post → Cell-based blog creator (plan → generate → review + images + social share)
+ * - github_repo → Code creator (plan → generate → review → iterate)
  *
  * Note: Images and social posts are COMPONENTS of blogs, not standalone formats
  * Philosophy: "Schemas all the way down" - all creators use structured outputs with Zod
@@ -62,8 +62,8 @@ export async function creatorAgent(
   try {
     switch (chosenFormat) {
       case 'blog_post':
-        logger.info('Delegating to blog creator (V2) - multi-stage pipeline with images and social share');
-        const blogResult = await createBlogV2(selectedIdea);
+        logger.info('Delegating to cell-based blog creator');
+        const blogResult = await createBlog(selectedIdea);
         logger.info('Blog creator completed successfully', {
           hasContent: !!blogResult.content,
         });

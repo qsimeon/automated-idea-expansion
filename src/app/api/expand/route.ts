@@ -197,7 +197,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      success: true,
+      success: status === 'completed' && !hasErrors,
       execution: {
         id: executionId,
         status,
@@ -225,6 +225,7 @@ export async function POST(request: Request) {
           }
         : null,
       outputId, // Include outputId so frontend can link to it
+      error: hasErrors ? result.errors.join('; ') : undefined,
     });
   } catch (error: any) {
     // Note: Logger may not be initialized if error occurs early

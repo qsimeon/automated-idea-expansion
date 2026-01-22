@@ -15,7 +15,7 @@ import { createLogger } from '@/lib/logging/logger';
 import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
 
 /**
- * BLOG CREATOR V3 - Cell-Based Architecture
+ * BLOG CREATOR - Cell-Based Architecture
  *
  * Philosophy: "Schemas all the way down"
  *
@@ -25,19 +25,17 @@ import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
  * 3. Image Generation → Generates images for ImageCell placeholders
  * 4. Review Agent → Quality check
  *
- * Key improvements over V2:
+ * Key features:
  * - Atomic cell structure (no markdown parsing needed)
  * - Images as first-class cells, not embedded strings
  * - Social post integrated into generation (not separate stage)
  * - Type-safe at every layer
- * - Can render to markdown for backward compatibility
  *
  * Models:
  * - GPT-4o-mini: Planning, review
  * - Claude Sonnet: Content generation (best writing quality)
  */
 
-// Planning schema (same as V2)
 const BlogPlanSchema = z.object({
   title: z.string(),
   sections: z.array(z.string()),
@@ -70,7 +68,7 @@ const BlogReviewSchema = z.object({
 /**
  * Main entry point for cell-based blog creation
  */
-export async function createBlogV3(ideaData: unknown): Promise<{
+export async function createBlog(ideaData: unknown): Promise<{
   content: any;
 }> {
   // Validate idea with schema
@@ -78,10 +76,10 @@ export async function createBlogV3(ideaData: unknown): Promise<{
 
   const logger = createLogger({
     ideaId: idea.id,
-    stage: 'blog-creator-v3',
+    stage: 'blog-creator',
   });
 
-  logger.info('=== BLOG CREATOR V3 STARTED (Cell-Based) ===', {
+  logger.info('=== BLOG CREATOR STARTED ===', {
     ideaTitle: idea.title,
     bulletsCount: idea.bullets?.length || 0,
   });
@@ -133,7 +131,7 @@ export async function createBlogV3(ideaData: unknown): Promise<{
   const markdown = renderBlogToMarkdown(cellsWithImages);
 
   const duration = logger.getDuration();
-  logger.info('=== BLOG CREATOR V3 COMPLETE ===', {
+  logger.info('=== BLOG CREATOR COMPLETE ===', {
     durationMs: duration,
     durationSeconds: (duration / 1000).toFixed(2),
     finalScore: review.overallScore,
