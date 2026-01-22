@@ -175,74 +175,80 @@ function BlogViewer({ content }: { content: any }) {
       </div>
 
       {/* Social Media Share Section */}
-      {content.socialPost && (
-        <div style={{
-          marginTop: '40px',
-          padding: '20px',
-          backgroundColor: '#f9fafb',
-          borderRadius: '12px',
-          border: '1px solid #e5e7eb'
-        }}>
-          <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '600' }}>
-            📱 Share on Social Media
-          </h3>
+      {content.socialPost && (() => {
+        // Replace [BLOG_URL] placeholder with actual URL
+        const blogUrl = typeof window !== 'undefined' ? window.location.href : '';
+        const tweetText = content.socialPost.content.replace('[BLOG_URL]', blogUrl);
+        const fullTweetText = `${tweetText}\n\n${content.socialPost.hashtags.map((t: string) => `#${t}`).join(' ')}`;
+
+        return (
           <div style={{
-            padding: '16px',
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            marginBottom: '12px',
+            marginTop: '40px',
+            padding: '20px',
+            backgroundColor: '#f9fafb',
+            borderRadius: '12px',
             border: '1px solid #e5e7eb'
           }}>
-            <p style={{ margin: 0, fontSize: '15px', lineHeight: '1.5' }}>
-              {content.socialPost.content}
-            </p>
-            <div style={{ marginTop: '8px' }}>
-              {content.socialPost.hashtags.map((tag: string) => (
-                <span key={tag} style={{
-                  display: 'inline-block',
-                  marginRight: '8px',
-                  color: '#1d9bf0',
-                  fontSize: '14px'
-                }}>
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          </div>
-          {content.socialPost.imageUrl && (
-            <img
-              src={content.socialPost.imageUrl}
-              alt={content.socialPost.imageCaption || 'Social media image'}
-              style={{
-                width: '100%',
-                maxWidth: '500px',
-                height: 'auto',
-                borderRadius: '8px',
-                marginBottom: '12px'
-              }}
-            />
-          )}
-          <button
-            onClick={() => {
-              const text = `${content.socialPost.content}\n\n${content.socialPost.hashtags.map((t: string) => `#${t}`).join(' ')}`;
-              navigator.clipboard.writeText(text);
-              alert('Copied to clipboard!');
-            }}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#1d9bf0',
-              color: 'white',
-              border: 'none',
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '600' }}>
+              📱 Share on Social Media
+            </h3>
+            <div style={{
+              padding: '16px',
+              backgroundColor: 'white',
               borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}
-          >
-            📋 Copy Tweet
-          </button>
-        </div>
-      )}
+              marginBottom: '12px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <p style={{ margin: 0, fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                {tweetText}
+              </p>
+              <div style={{ marginTop: '8px' }}>
+                {content.socialPost.hashtags.map((tag: string) => (
+                  <span key={tag} style={{
+                    display: 'inline-block',
+                    marginRight: '8px',
+                    color: '#1d9bf0',
+                    fontSize: '14px'
+                  }}>
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {content.socialPost.imageUrl && (
+              <img
+                src={content.socialPost.imageUrl}
+                alt={content.socialPost.imageCaption || 'Social media image'}
+                style={{
+                  width: '100%',
+                  maxWidth: '500px',
+                  height: 'auto',
+                  borderRadius: '8px',
+                  marginBottom: '12px'
+                }}
+              />
+            )}
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(fullTweetText);
+                alert('Copied to clipboard!');
+              }}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#1d9bf0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            >
+              📋 Copy Tweet
+            </button>
+          </div>
+        );
+      })()}
     </article>
   );
 }

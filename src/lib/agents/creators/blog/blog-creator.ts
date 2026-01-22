@@ -117,6 +117,35 @@ export async function createBlog(ideaData: unknown): Promise<{
     imagesGenerated: images.length,
   });
 
+  // STAGE 3.5: Social Media Image (if requested)
+  let socialImage: GeneratedImage | undefined;
+  if (generation.socialPost.includeImage) {
+    logger.info('STAGE 3.5: Social media image generation started');
+    try {
+      // Use first blog image or generate a new one for social media
+      if (images.length > 0) {
+        // Reuse the first blog image for social media
+        socialImage = images[0];
+        logger.info('STAGE 3.5: Using first blog image for social post');
+      } else {
+        // Generate a dedicated social media image
+        const socialImageSpec = {
+          placement: 'social',
+          concept: generation.title,
+          style: 'eye-catching, social media optimized',
+          aspectRatio: '16:9' as const,
+        };
+        socialImage = await generateImageForContent(socialImageSpec, generation.title);
+        logger.info('STAGE 3.5: Social media image generated');
+      }
+    } catch (error) {
+      logger.error('STAGE 3.5: Social media image generation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Continue without social image
+    }
+  }
+
   // STAGE 4: Review
   logger.info('STAGE 4: Review started');
   const review = await reviewBlogCells(cellsWithImages, plan, logger);
@@ -150,10 +179,11 @@ export async function createBlog(ideaData: unknown): Promise<{
       readingTimeMinutes,
       images, // Generated images array
       socialPost: {
-        content: generation.socialPost.content,
+        content: generation.socialPost.content, // Contains [BLOG_URL] placeholder
         hashtags: generation.socialPost.hashtags,
         platform: 'twitter',
-        // Image will be added by social-share-generator if needed
+        imageUrl: socialImage?.imageUrl,
+        imageCaption: socialImage?.caption,
       },
       _reviewScore: review.overallScore,
       _sections: plan.sections,
@@ -261,13 +291,24 @@ REQUIREMENTS:
 - Tone: ${plan.tone}
 
 SOCIAL POST:
-Generate a compelling tweet (max 280 chars) with 2-3 hashtags.
+Generate a compelling tweet that will link to the full blog post:
+- Max 280 characters INCLUDING the link placeholder
+- End with " [BLOG_URL]" (this will be replaced with actual URL)
+- Include 2-3 relevant hashtags (without # prefix)
+- Decide if an image would help (visual concepts work best with images)
+- Make it engaging - create curiosity to click through
+
+Example: "Ever wondered how X works? The answer might surprise you 🤯 [BLOG_URL]"
 
 OUTPUT FORMAT:
 {
   "title": "...",
   "cells": [ ...array of cells... ],
-  "socialPost": { "content": "...", "hashtags": [...], "includeImage": true/false }
+  "socialPost": {
+    "content": "Hook text ending with [BLOG_URL]",
+    "hashtags": ["tag1", "tag2", "tag3"],
+    "includeImage": true/false
+  }
 }
 
 Generate the complete structured blog.`;

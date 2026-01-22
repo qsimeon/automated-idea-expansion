@@ -111,9 +111,9 @@ export type BlogCell = z.infer<typeof BlogCellSchema>;
  * Social Media Post Schema (embedded in blog generation)
  */
 export const SocialPostSchema = z.object({
-  content: z.string().max(280).describe('Tweet text (max 280 chars)'),
+  content: z.string().max(280).describe('Tweet text (max 280 chars, should end with [BLOG_URL] placeholder)'),
   hashtags: z.array(z.string()).min(2).max(3).describe('2-3 hashtags without # prefix'),
-  includeImage: z.boolean().describe('Whether to generate a social media image'),
+  includeImage: z.boolean().describe('Whether to include an image with the post'),
 });
 
 export type SocialPost = z.infer<typeof SocialPostSchema>;
