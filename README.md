@@ -1,6 +1,6 @@
 # Automated Idea Expansion
 
-An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts (with images), code projects, or social media threads.
+An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts (with images + social share tweet) or complete code projects.
 
 ## 🎯 Current Status
 
@@ -21,23 +21,24 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Outputs viewer with format-specific displays
 - ✅ Delete functionality for both ideas and outputs
 
-#### **Phase 4: Multi-Agent Pipeline (LangGraph) - NEW ARCHITECTURE**
-- ✅ **Judge Agent** - Evaluates and selects best idea (GPT-5 Nano)
-- ✅ **Router Agent** - Decides optimal output format (GPT-5 Nano)
-- ✅ **Creator Agents** - Generates content in **3 formats**:
-  - 📝 **Blog Posts V2** - Multi-stage pipeline with optional images (1-3):
+#### **Phase 4: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
+- ✅ **Judge Agent** - Evaluates and selects best idea (GPT-4o-mini)
+- ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
+- ✅ **Creator Agents** - Generates content in **2 formats**:
+  - 📝 **Blog Posts V2/V3** - Multi-stage pipeline with images + social share:
     - Planning (GPT-4o-mini) → sections, tone, image specs
-    - Generation (Claude Haiku) → markdown + images with captions
+    - Generation (Claude Sonnet) → content + 1-3 images with captions
+    - Social Share (GPT-4o-mini) → auto-generated tweet (280 chars max, 2-3 hashtags)
     - Review (GPT-4o-mini) → quality scoring
-  - 🦣 **Mastodon Threads** - 500-char social posts with optional hero image
+    - **V3 Available:** Cell-based architecture (atomic content blocks, not markdown)
   - 💻 **Code Projects V2** - 5-stage pipeline with iteration:
-    - Planning (GPT-5 Nano) → quality rubrics, implementation steps
+    - Planning (GPT-4o-mini) → quality rubrics, implementation steps
     - Generation (Claude Sonnet 4.5) → all files with structured outputs
-    - Review (GPT-5 Nano) → actionable feedback
+    - Review (GPT-4o-mini) → actionable feedback
     - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
-    - Up to 5 cycles until score ≥75
+    - Up to 3 cycles until score ≥75
 
-**Note:** Images are now **components** within blogs/threads, not standalone formats.
+**Note:** Images and social posts are **components** of blogs, not standalone formats.
 
 ### 🎉 Recent Accomplishments:
 
@@ -86,9 +87,15 @@ User Idea → Judge Agent → Router Agent → Creator Agent → Saved Output
               ↓             ↓               ↓
            Evaluates    Chooses         Generates
            & selects    format          content
-           best idea    (blog/          (3-5 stages
-                        thread/         depending on
+           best idea    (blog           (4-5 stages
+                        or              depending on
                         code)           format)
+
+Blog Pipeline:
+  Planning → Generation (text + images) → Social Share → Review → Output
+
+Code Pipeline:
+  Planning → Generation → Review → Iteration (if needed) → GitHub Publish → Output
 ```
 
 ### Agent Pipeline Details

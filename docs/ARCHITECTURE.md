@@ -36,43 +36,33 @@ OPTIONAL STAGE 4: Iteration
 
 ### 1. Blog Posts (`blog_post`)
 
-**Purpose:** Long-form articles (1000-2000 words) with optional images
+**Purpose:** Written content (1000-2000 words) with optional images and auto-generated social share
 
-**Pipeline:**
+**Pipeline (4 Stages):**
 - Planning (GPT-4o-mini) → decides title, sections, tone, image needs
-- Generation (Claude Haiku) → creates markdown + up to 3 images with captions
-- Review (GPT-4o-mini) → scores clarity, accuracy, engagement, image relevance
+- Generation (Claude Sonnet) → creates structured content + up to 3 images with captions
+- Social Share (GPT-4o-mini) → auto-generates tweet (max 280 chars, 2-3 hashtags, optional image)
+- Review (GPT-4o-mini) → scores clarity, accuracy, engagement, structure
 
 **Features:**
 - Context-aware image generation (images understand blog content)
-- Smart placement (intro, sections, conclusion)
-- Automatic captions and alt text
-- Cost-optimized model selection
+- Smart placement (featured, inline, end)
+- Automatic social media post for sharing
+- Cell-based architecture (V3): atomic content blocks instead of markdown strings
+- Backward compatible with V2 (markdown-based)
+
+**Architectures:**
+- **V2 (Current):** Markdown generation → image insertion → social share
+- **V3 (Available):** Cell-based generation (BlogCell[] with MarkdownCell + ImageCell)
 
 **Files:**
-- `src/lib/agents/creators/blog-creator-v2.ts` - Main orchestrator
+- `src/lib/agents/creators/blog-creator-v2.ts` - Main orchestrator (V2)
+- `src/lib/agents/creators/blog/blog-creator-v3.ts` - Cell-based orchestrator (V3)
+- `src/lib/agents/creators/blog/blog-schemas.ts` - Cell schemas (V3)
+- `src/lib/agents/creators/social-share-generator.ts` - Social media post generator
 - `src/lib/agents/creators/image-creator.ts` - Image subagent
-- `src/lib/agents/model-factory.ts` - Model selection
 
-### 2. Mastodon Threads (`twitter_thread`)
-
-**Purpose:** Social media threads (5-10 posts, 500 chars each) with optional hero image
-
-**Pipeline:**
-- Planning → decides hook, length, key points, hero image
-- Generation → creates posts + optional hero image
-- Review → scores hook strength, flow, engagement
-
-**Features:**
-- Character count validation (≤500 per post)
-- Hook optimization (first post is most important)
-- Optional hero image for post #1
-- Publishing to Mastodon (when configured)
-
-**Files:**
-- `src/lib/agents/creators/mastodon-creator.ts`
-
-### 3. Code Projects (`github_repo`)
+### 2. Code Projects (`github_repo`)
 
 **Purpose:** Interactive code (Python/JS/TS notebooks, CLI tools, web apps)
 
@@ -103,23 +93,26 @@ OPTIONAL STAGE 4: Iteration
 
 ## Key Design Decisions
 
-### Decision 1: Images as Components, Not Formats
+### Decision 1: Simplified Content Pipeline
 
-**Old Architecture:**
+**Evolution:**
 ```
-Router → blog | thread | code | IMAGE ❌
+V1: Router → blog | thread | code | IMAGE ❌ (Too fragmented)
+V2: Router → blog | thread | code (Images as components) ✓
+V3: Router → blog | code (Unified writing format) ✓✓
 ```
 
-**New Architecture:**
+**Current Architecture:**
 ```
-Router → blog (can include images) | thread (can include hero image) | code
+Router → blog_post (with images + social share) | github_repo
 ```
 
 **Why?**
-- Images aren't a final deliverable format
-- They're **visual enhancements** that support other formats
-- Allows blogs/threads to be more expressive
-- Reduces format fragmentation
+- **Images & social posts are components**, not standalone formats
+- **Blogs handle all written content**: long-form articles, tutorials, AND bite-sized tips
+- **Auto-generated social share**: every blog gets a ready-to-post tweet
+- **Reduced complexity**: 2 formats instead of 4
+- **Better UX**: One format for writing, one for code
 
 ### Decision 2: Multi-Stage Pipelines for All Content
 
