@@ -1,18 +1,16 @@
-import { createModel, IMAGE_PROMPT_MODEL } from '../model-factory';
+import { ChatOpenAI } from '@langchain/openai';
 import type { ImageSpec, GeneratedImage } from '../types';
 
 /**
  * IMAGE GENERATION SUBAGENT
  *
- * NOT a standalone creator - used as subcomponent by blog/thread creators
+ * NOT a standalone creator - used as subcomponent by blog creators
  *
  * This module provides modular image generation functions:
  * - createImagePrompt: Generate detailed prompt from concept
  * - generateImage: Create actual image via API
  * - generateImageCaption: Create caption for image
  * - generateImageForContent: Complete pipeline
- *
- * Can also be used standalone for 'image' format (legacy support)
  *
  * Supported APIs (in priority order):
  * - fal.ai (fast, generous free tier, high quality)
@@ -21,39 +19,18 @@ import type { ImageSpec, GeneratedImage } from '../types';
  */
 
 /**
- * LEGACY: Standalone image creator (for 'image' format)
- * Maintained for backward compatibility
- */
-export async function createAIImage(idea: any): Promise<{
-  content: GeneratedImage;
-  
-}> {
-  // Convert idea to ImageSpec
-  const spec: ImageSpec = {
-    placement: 'standalone',
-    concept: idea.title,
-    style: 'professional illustration',
-    aspectRatio: '16:9',
-  };
-
-  // Generate using new pipeline
-  const generatedImage = await generateImageForContent(spec);
-
-  return {
-    content: generatedImage,
-     // Estimate if needed
-  };
-}
-
-/**
- * NEW: Generate detailed image prompt from concept
- * Used by blog/thread creators to create context-aware images
+ * Generate detailed image prompt from concept
+ * Used by blog creators to create context-aware images
  */
 export async function createImagePrompt(
   spec: ImageSpec,
   contentContext?: string // Optional context from blog/thread
 ): Promise<string> {
-  const model = createModel(IMAGE_PROMPT_MODEL, 0.9); // High creativity
+  const model = new ChatOpenAI({
+    modelName: 'gpt-4o-mini-2024-07-18',
+    temperature: 0.9, // High creativity
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
   const prompt = `Create a detailed image generation prompt for this concept:
 
@@ -79,14 +56,18 @@ Return ONLY the prompt text (no JSON, no explanation).`;
 }
 
 /**
- * NEW: Generate caption for image
+ * Generate caption for image
  * Creates concise, descriptive alt text
  */
 export async function generateImageCaption(
   imagePrompt: string,
   concept: string
 ): Promise<string> {
-  const model = createModel('gpt-4o-mini', 0.7); // Fast, cheap
+  const model = new ChatOpenAI({
+    modelName: 'gpt-4o-mini-2024-07-18',
+    temperature: 0.7,
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
   const prompt = `Create a concise, descriptive caption for this image:
 
@@ -101,8 +82,8 @@ No quotes, just the caption text.`;
 }
 
 /**
- * NEW: Complete image generation pipeline
- * This is the main function that blog/thread creators should use
+ * Complete image generation pipeline
+ * This is the main function that blog creators should use
  */
 export async function generateImageForContent(
   spec: ImageSpec,

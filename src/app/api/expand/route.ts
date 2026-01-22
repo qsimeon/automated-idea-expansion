@@ -128,7 +128,6 @@ export async function POST(request: Request) {
         format_reasoning: result.formatReasoning,
         status,
         error_message: result.errors.join('; ') || null,
-        tokens_used: result.tokensUsed,
         duration_seconds: durationSeconds,
         completed_at: endTime.toISOString(),
       })
@@ -188,7 +187,6 @@ export async function POST(request: Request) {
       status,
       selectedIdea: result.selectedIdea?.title,
       chosenFormat: result.chosenFormat,
-      tokensUsed: result.tokensUsed,
       durationSeconds,
       durationMs: logger.getDuration(),
       outputId,
@@ -209,7 +207,6 @@ export async function POST(request: Request) {
           : null,
         format: result.chosenFormat,
         judgeScore: result.judgeScore,
-        tokensUsed: result.tokensUsed,
         durationSeconds,
         errors: result.errors,
       },

@@ -5,7 +5,7 @@ import Link from 'next/link';
 
 interface Output {
   id: string;
-  format: 'blog_post' | 'twitter_thread' | 'github_repo';
+  format: 'blog_post' | 'github_repo';
   content: any;
   created_at: string;
   idea_id: string;
@@ -47,8 +47,6 @@ export default function OutputsPage() {
     switch (format) {
       case 'blog_post':
         return '📝';
-      case 'twitter_thread':
-        return '🦣';
       case 'github_repo':
         return '💻';
       default:
@@ -60,8 +58,6 @@ export default function OutputsPage() {
     switch (output.format) {
       case 'blog_post':
         return output.content.title || 'Untitled Blog Post';
-      case 'twitter_thread':
-        return `${output.content.totalPosts} posts`;
       case 'github_repo':
         return output.content.repoName || 'Code Project';
       default:
@@ -110,7 +106,7 @@ export default function OutputsPage() {
 
       {/* Filter Tabs */}
       <div style={{ marginBottom: '30px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        {['all', 'blog_post', 'twitter_thread', 'github_repo'].map((f) => (
+        {['all', 'blog_post', 'github_repo'].map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}

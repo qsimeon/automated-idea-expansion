@@ -65,10 +65,13 @@ export type MarkdownBlock = z.infer<typeof MarkdownBlockSchema>;
  *
  * Images are not embedded in markdown strings but are separate cells
  * with explicit placement and metadata.
+ *
+ * Note: imageUrl accepts placeholders like "[PLACEHOLDER-1]" during generation,
+ * which get replaced with actual URLs after image generation.
  */
 export const ImageCellSchema = z.object({
   cellType: z.literal('image'),
-  imageUrl: z.string().url(),
+  imageUrl: z.string(), // Accept any string (including placeholders)
   caption: z.string(),
   placement: z.enum(['featured', 'inline', 'end']).describe(
     'featured = hero image, inline = between sections, end = conclusion'

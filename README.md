@@ -25,14 +25,14 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ **Judge Agent** - Evaluates and selects best idea (GPT-4o-mini)
 - ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
 - ✅ **Creator Agents** - Generates content in **2 formats**:
-  - 📝 **Blog Posts V2/V3** - Multi-stage pipeline with images + social share:
-    - Planning (GPT-4o-mini) → sections, tone, image specs
-    - Generation (Claude Haiku 4.5) → content + 1-3 images with captions
-    - Social Share (GPT-4o-mini) → auto-generated tweet (280 chars max, 2-3 hashtags)
+  - 📝 **Blog Posts** - 4-stage cell-based pipeline with images + social share:
+    - Planning (GPT-5 Nano) → sections, tone, image specs
+    - Generation (Claude Sonnet 4.5) → cell-based content (MarkdownCell + ImageCell) + 1-3 images
+    - Social Share (integrated) → auto-generated tweet (280 chars max, 2-3 hashtags)
     - Review (GPT-4o-mini) → quality scoring
-    - **V3 Available:** Cell-based architecture (atomic content blocks, not markdown)
-  - 💻 **Code Projects V2** - 5-stage pipeline with iteration:
-    - Planning (GPT-4o-mini) → quality rubrics, implementation steps
+    - **Architecture:** Atomic content blocks, no markdown string manipulation
+  - 💻 **Code Projects** - 5-stage pipeline with iteration:
+    - Planning (GPT-5 Nano) → quality rubrics, implementation steps
     - Generation (Claude Sonnet 4.5) → all files with structured outputs
     - Review (GPT-4o-mini) → actionable feedback
     - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
@@ -42,20 +42,21 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 
 ### 🎉 Recent Accomplishments:
 
-#### **Unified Content Pipeline (Jan 2026) - LATEST**
-- ✅ **Images as Components** - Removed 'image' as standalone format
-  - Images now generated as subcomponents within blogs/threads
-  - Context-aware generation (images understand content)
+#### **Cell-Based Architecture & Model Optimization (Jan 2026) - LATEST**
+- ✅ **Cell-Based Blog Architecture** - Atomic content blocks:
+  - MarkdownCell + ImageCell discriminated unions
+  - No markdown string manipulation (schemas all the way down)
+  - Type-safe at every layer with Zod validation
+- ✅ **Images as Components** - Removed 'image' as standalone format:
+  - Images generated as first-class cells within blog content
+  - Context-aware generation (images understand blog content)
   - Up to 3 images per blog with captions and alt text
-- ✅ **Blog Creator V2** - Multi-stage pipeline:
-  - Planning → Generation (Text + Images) → Review
-  - Uses GPT-4o-mini for planning/review (fast and cost-effective)
-  - Uses Claude Haiku for text generation (superior writing quality)
-- ✅ **Model Factory** - Centralized model selection:
-  - Created model-factory.ts for consistent model usage
-  - OpenAI (GPT-4o-mini) for planning/review
-  - Anthropic (Claude Haiku/Sonnet) for text generation and coding
-- ✅ **Enhanced Schemas** - BlogPlan, BlogDraft, BlogReview, ImageSpec, GeneratedImage
+- ✅ **Optimized Model Selection**:
+  - GPT-5 Nano for planning (fast, cost-effective, temperature=1 only)
+  - Claude Sonnet 4.5 for blog generation (handles complex nested schemas)
+  - GPT-4o-mini for review/routing/judging
+  - Direct model instantiation (removed model-factory abstraction)
+- ✅ **Social Share Integration** - Auto-generated tweets embedded in blog generation
 - ✅ **GitHub Repo Links** - Added "View on GitHub" buttons to code output cards
 
 #### **Structured Outputs Migration (Jan 2026)**
@@ -110,37 +111,26 @@ Code Pipeline:
 - **Model:** GPT-4o-mini
 - **Task:** Decide optimal output format based on value to audience
 - **Options:**
-  - `blog_post` - Deep explanations, tutorials (1000-2000 words)
-  - `twitter_thread` - Quick insights, tips (5-10 posts × 500 chars)
-  - `github_repo` - Code demonstrations, experiments
+  - `blog_post` - Written content (explanations, tutorials, tips) with images + social share
+  - `github_repo` - Code demonstrations, experiments, interactive projects
 - **Output:** Format + reasoning
 
 **3. Creator Agent** (`creator-agent.ts`)
 - **Task:** Route to format-specific creator and orchestrate generation
 
-#### Blog Creator V2 (3 stages)
+#### Blog Creator (4 stages)
 ```
-Plan → Generate → Review
-  ↓       ↓         ↓
-GPT    Claude    GPT
-mini   Haiku     mini
+Plan → Generate (Cells) → Social → Review
+  ↓         ↓                ↓        ↓
+GPT-5   Claude          Integrated  GPT-4o
+Nano    Sonnet 4.5                  mini
 ```
-- **Stage 1 (Plan):** Decide title, sections, tone, image specs
-- **Stage 2 (Generate):** Create markdown + 1-3 images with captions
-- **Stage 3 (Review):** Score on clarity, accuracy, engagement, image relevance
+- **Stage 1 (Plan):** Decide title, sections, tone, image specs (GPT-5 Nano)
+- **Stage 2 (Generate):** Create cell-based content (MarkdownCell + ImageCell) + images (Claude Sonnet 4.5)
+- **Stage 3 (Social):** Auto-generate tweet with hashtags (integrated in generation)
+- **Stage 4 (Review):** Score on clarity, accuracy, engagement, structure (GPT-4o-mini)
 
-#### Mastodon Thread Creator V2 (3 stages)
-```
-Plan → Generate → Review
-  ↓       ↓         ↓
-GPT    Claude    GPT
-mini   Haiku     mini
-```
-- **Stage 1 (Plan):** Decide hook, thread length, key points, hero image
-- **Stage 2 (Generate):** Create 3-10 posts (≤500 chars each) + optional hero image
-- **Stage 3 (Review):** Score on hook strength, flow, engagement, char compliance
-
-#### Code Creator V2 (5 stages with iteration)
+#### Code Creator (5 stages with iteration)
 ```
 Plan → Generate → Review → Iterate? → Publish
   ↓       ↓         ↓         ↓          ↓
@@ -356,10 +346,6 @@ Example of a successful blog expansion:
    GITHUB_TOKEN=github_pat_...          # Personal Access Token with repo scope
    GITHUB_USERNAME=your_username
 
-   # Publishing (Optional - for other formats)
-   MASTODON_ACCESS_TOKEN=...
-   MASTODON_INSTANCE_URL=https://mastodon.social
-
    # Image Generation (Optional)
    FAL_KEY=...
    HUGGINGFACE_API_KEY=hf_...
@@ -529,15 +515,16 @@ automated-idea-expansion/
 │       │   ├── creator-agent.ts # Creator orchestrator
 │       │   ├── types.ts        # Shared state types
 │       │   └── creators/       # Format-specific creators
-│       │       ├── blog-creator.ts
-│       │       ├── mastodon-creator.ts
+│       │       ├── blog/       # Blog creation
+│       │       │   ├── blog-creator.ts
+│       │       │   └── blog-schemas.ts
 │       │       ├── image-creator.ts
-│       │       └── code/       # Multi-stage code creator
+│       │       └── code/       # Code creation
 │       │           ├── types.ts
+│       │           ├── code-creator.ts
 │       │           ├── planning-agent.ts
 │       │           ├── generation-agent.ts
-│       │           ├── critic-agent.ts
-│       │           └── code-creator-v2.ts
+│       │           └── critic-agent.ts
 │       │
 │       └── db/
 │           ├── supabase.ts     # DB client

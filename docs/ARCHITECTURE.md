@@ -39,28 +39,28 @@ OPTIONAL STAGE 4: Iteration
 **Purpose:** Written content (1000-2000 words) with optional images and auto-generated social share
 
 **Pipeline (4 Stages):**
-- Planning (GPT-4o-mini) → decides title, sections, tone, image needs
-- Generation (Claude Sonnet) → creates structured content + up to 3 images with captions
-- Social Share (GPT-4o-mini) → auto-generates tweet (max 280 chars, 2-3 hashtags, optional image)
+- Planning (GPT-5 Nano) → decides title, sections, tone, image needs
+- Generation (Claude Sonnet 4.5) → creates structured content + up to 3 images with captions
+- Social Share (integrated in generation) → auto-generates tweet (max 280 chars, 2-3 hashtags, optional image)
 - Review (GPT-4o-mini) → scores clarity, accuracy, engagement, structure
 
 **Features:**
+- Cell-based architecture: atomic content blocks (MarkdownCell, ImageCell) instead of markdown strings
 - Context-aware image generation (images understand blog content)
 - Smart placement (featured, inline, end)
 - Automatic social media post for sharing
-- Cell-based architecture (V3): atomic content blocks instead of markdown strings
-- Backward compatible with V2 (markdown-based)
+- Type-safe structured output with Zod schemas
 
-**Architectures:**
-- **V2 (Current):** Markdown generation → image insertion → social share
-- **V3 (Available):** Cell-based generation (BlogCell[] with MarkdownCell + ImageCell)
+**Architecture:**
+- Cell-based generation: BlogCell[] with discriminated unions
+- Images and social posts generated during content creation (not post-processing)
+- Direct model instantiation (no model factory abstraction)
 
 **Files:**
-- `src/lib/agents/creators/blog-creator-v2.ts` - Main orchestrator (V2)
-- `src/lib/agents/creators/blog/blog-creator-v3.ts` - Cell-based orchestrator (V3)
-- `src/lib/agents/creators/blog/blog-schemas.ts` - Cell schemas (V3)
+- `src/lib/agents/creators/blog/blog-creator.ts` - Main orchestrator
+- `src/lib/agents/creators/blog/blog-schemas.ts` - Cell and content schemas
 - `src/lib/agents/creators/social-share-generator.ts` - Social media post generator
-- `src/lib/agents/creators/image-creator.ts` - Image subagent
+- `src/lib/agents/creators/image-creator.ts` - Image generation subagent
 
 ### 2. Code Projects (`github_repo`)
 
@@ -83,7 +83,7 @@ OPTIONAL STAGE 4: Iteration
 - Cost-optimized (fixes save 60-80% vs full regeneration)
 
 **Files:**
-- `src/lib/agents/creators/code/code-creator-v2.ts` - Orchestrator
+- `src/lib/agents/creators/code/code-creator.ts` - Main orchestrator
 - `src/lib/agents/creators/code/planning-agent.ts` - Enhanced planning
 - `src/lib/agents/creators/code/generation-agent.ts` - Code generation
 - `src/lib/agents/creators/code/critic-agent.ts` - Review with actionable feedback
@@ -132,15 +132,17 @@ Router → blog_post (with images + social share) | github_repo
 **Model Selection by Task:**
 | Task | Model | Why? |
 |------|-------|------|
-| Planning | GPT-4o-mini | Fast, cost-effective, good at structure |
-| Text Generation | Claude Haiku | Excellent writing quality |
-| Image Prompts | GPT-4o-mini | Creative prompt engineering |
-| Review | GPT-4o-mini | Fast, consistent evaluation |
+| Planning (Blog/Code) | GPT-5 Nano | Fast, cost-effective, good at structured reasoning |
+| Blog Generation | Claude Sonnet 4.5 | Best at complex structured output (cells, nested schemas) |
 | Coding | Claude Sonnet 4.5 | Best at code generation |
+| Image Prompts | GPT-4o-mini | Creative prompt engineering |
+| Review (All) | GPT-4o-mini | Fast, consistent evaluation |
+| Routing/Judging | GPT-4o-mini | Fast decision-making |
 
 **Cost Impact:**
-- Planning/Review: GPT-4o-mini is fast and cost-effective ($0.15/1M input)
-- Writing: Claude Haiku quality >> GPT-4o-mini at similar cost
+- Planning: GPT-5 Nano is extremely cost-effective (only supports temperature=1)
+- Blog Writing: Claude Sonnet handles complex schemas (Haiku insufficient for nested structures)
+- Review: GPT-4o-mini is fast and consistent ($0.15/1M input)
 - Coding: Claude Sonnet worth the premium ($3/1M input)
 
 ### Decision 4: Iteration Loops (Code Only, For Now)
@@ -165,7 +167,7 @@ Router → blog_post (with images + social share) | github_repo
 2. If "build X" or "implement Y" → `github_repo` (tool/demo)
 3. If hands-on/experimental → `github_repo` (interactive value)
 4. If conceptual/explanatory → `blog_post`
-5. If quick tips/insights → `twitter_thread`
+5. If written content (tips, insights, tutorials) → `blog_post`
 6. When uncertain → prefer code (more valuable for technical ideas)
 
 **Files:** `src/lib/agents/router-agent.ts`
@@ -181,9 +183,8 @@ Creator Agent receives:
   └─ Format (from Router)
 
 Routes to:
-  ├─ createBlogV2() for blog_post
-  ├─ createMastodonThread() for twitter_thread
-  └─ createCodeProjectV2() for github_repo
+  ├─ createBlog() for blog_post
+  └─ createCodeProject() for github_repo
 ```
 
 **Files:** `src/lib/agents/creator-agent.ts`
@@ -207,33 +208,6 @@ Routes to:
 
 ---
 
-## Model Factory
-
-**Purpose:** Centralized model selection for consistent, cost-optimized AI usage
-
-**Supported Models:**
-```typescript
-type ModelType =
-  | 'gpt-4o-mini'     // Fast, cost-effective ($0.15/1M input)
-  | 'claude-haiku'    // Fast, excellent writing ($0.25/1M input)
-  | 'claude-sonnet';  // Best coding/writing ($3/1M input)
-```
-
-**Usage:**
-```typescript
-import { createModel, IMAGE_PROMPT_MODEL } from './model-factory';
-
-// Use the recommended constant for image prompts:
-const model = createModel(IMAGE_PROMPT_MODEL, 0.9);
-
-// Or be explicit:
-const model = createModel('gpt-4o-mini', 0.7);
-```
-
-**Files:** `src/lib/agents/model-factory.ts`
-
----
-
 ## Structured Outputs with Zod
 
 **Problem:** LLMs sometimes return invalid JSON, requiring complex parsing/validation
@@ -243,6 +217,7 @@ const model = createModel('gpt-4o-mini', 0.7);
 **Example:**
 ```typescript
 import { z } from 'zod';
+import { ChatOpenAI } from '@langchain/openai';
 
 const BlogPlanSchema = z.object({
   title: z.string(),
@@ -253,7 +228,10 @@ const BlogPlanSchema = z.object({
   imageSpecs: z.array(ImageSpecSchema),
 });
 
-const model = createModel('gpt-4o-mini');
+const model = new ChatOpenAI({
+  modelName: 'gpt-5-nano-2025-08-07',
+  apiKey: process.env.OPENAI_API_KEY,
+});
 const structuredModel = model.withStructuredOutput(BlogPlanSchema);
 
 const plan = await structuredModel.invoke(prompt);
@@ -267,9 +245,9 @@ const plan = await structuredModel.invoke(prompt);
 - ✅ **Cleaner code** (no try/catch blocks for parsing)
 
 **Used in:**
-- Blog planning, draft, review
-- Code planning, review
-- Thread planning, draft, review
+- Blog planning, generation (cells), social post, review
+- Code planning, generation, review
+- Routing and judging
 
 ---
 
@@ -315,11 +293,11 @@ interface QualityRubric {
 
 | Stage | Model | Tokens | Cost | Duration |
 |-------|-------|--------|------|----------|
-| Planning | GPT-4o-mini | ~500 | $0.0002 | 2s |
-| Text Generation | Claude Haiku | ~2000 | $0.003 | 5s |
+| Planning | GPT-5 Nano | ~500 | $0.0001 | 1s |
+| Generation (Cells + Social) | Claude Sonnet 4.5 | ~2500 | $0.0075 | 6s |
 | Image Generation (×3) | GPT-4o-mini + fal.ai | ~600 | $0.015 | 15s |
 | Review | GPT-4o-mini | ~800 | $0.0003 | 2s |
-| **Total** | | ~3900 | **$0.019** | **24s** |
+| **Total** | | ~4400 | **$0.023** | **24s** |
 
 ### Code Project Creation (with iteration)
 
@@ -351,8 +329,6 @@ REPLICATE_API_TOKEN=r8_...         # Replicate (fallback)
 # Publishing
 GITHUB_TOKEN=ghp_...               # For code publishing
 GITHUB_USERNAME=your_username      # For GitHub repos
-MASTODON_ACCESS_TOKEN=...          # For thread publishing
-MASTODON_INSTANCE_URL=https://...  # Mastodon instance
 
 # Database
 NEXT_PUBLIC_SUPABASE_URL=https://...
@@ -383,27 +359,27 @@ src/
 │   │
 │   ├── agents/                       # 🧠 The AI pipeline
 │   │   ├── types.ts                  # Agent state, plans, rubrics
-│   │   ├── model-factory.ts          # ✅ Cleaned! Model selection
 │   │   ├── judge-agent.ts            # 📊 Pick best idea
-│   │   ├── router-agent.ts           # 🎯 Choose format
+│   │   ├── router-agent.ts           # 🎯 Choose format (blog_post | github_repo)
 │   │   ├── creator-agent.ts          # Orchestrates format creators
 │   │   │
 │   │   ├── creators/
-│   │   │   ├── blog-creator-v2.ts    # 📝 3-stage blog pipeline
-│   │   │   ├── mastodon-creator-v2.ts# 🦣 3-stage thread pipeline
+│   │   │   ├── blog/                 # 📝 Blog creation
+│   │   │   │   ├── blog-creator.ts   # 4-stage orchestrator
+│   │   │   │   └── blog-schemas.ts   # Cell-based schemas
+│   │   │   ├── social-share-generator.ts # Social media posts
 │   │   │   ├── image-creator.ts      # 🎨 Image generation subagent
 │   │   │   │
 │   │   │   └── code/                 # 💻 Code creation (advanced)
 │   │   │       ├── types.ts          # Code-specific types
-│   │   │       ├── code-creator-v2.ts# 5-stage orchestrator
+│   │   │       ├── code-creator.ts   # 5-stage orchestrator
 │   │   │       ├── planning-agent.ts # Plan with quality rubrics
 │   │   │       ├── generation-agent.ts# Generate all files
 │   │   │       ├── critic-agent.ts   # Review with scoring
 │   │   │       └── fixer-agent.ts    # Fix specific files
 │   │   │
 │   │   └── publishers/
-│   │       ├── github-publisher.ts   # Publish to GitHub
-│   │       └── mastodon-publisher.ts # Publish threads
+│   │       └── github-publisher.ts   # Publish code to GitHub
 │   │
 │   └── logging/
 │       └── logger.ts                 # Centralized logger with context
@@ -427,13 +403,12 @@ src/
    └─ agents/judge-agent.ts (📊) evaluates all pending ideas
 
 4. Router chooses format
-   └─ agents/router-agent.ts (🎯) decides blog/thread/code
+   └─ agents/router-agent.ts (🎯) decides blog_post or github_repo
 
 5. Creator orchestrates format-specific pipeline
    └─ agents/creator-agent.ts routes to:
-      ├─ creators/blog-creator-v2.ts (📝)
-      ├─ creators/mastodon-creator-v2.ts (🦣)
-      └─ creators/code/code-creator-v2.ts (💻)
+      ├─ creators/blog/blog-creator.ts (📝)
+      └─ creators/code/code-creator.ts (💻)
 
 6. Save output
    └─ db/queries.ts stores generated content
@@ -662,8 +637,8 @@ Suggested test cases:
 ## Future Enhancements
 
 ### Short-term (Next 2 Weeks)
-1. ✅ Add iteration loop to blog/thread creators (similar to code)
-2. ✅ Create mastodon-creator-v2.ts with multi-stage pipeline
+1. ✅ Add cell-based architecture to blog creator
+2. ✅ Integrate social share generation into blog pipeline
 3. ✅ Add metrics dashboard (iteration counts, scores, costs)
 4. ✅ Fine-tune quality rubrics based on real data
 
@@ -703,7 +678,7 @@ npm install @langchain/google-genai --legacy-peer-deps
 
 **Issue: Code review scores always low**
 - Check quality rubric criteria (may be too strict)
-- Adjust thresholds in code-creator-v2.ts
+- Adjust thresholds in code-creator.ts
 - Review critic-agent.ts prompts
 
 ---

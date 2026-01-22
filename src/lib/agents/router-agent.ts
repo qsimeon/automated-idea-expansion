@@ -65,7 +65,6 @@ export async function routerAgent(
     routerLogger?.info('✅ Format selected', {
       format: result.chosenFormat,
       reasoning: result.formatReasoning,
-      tokensUsed: result.tokensUsed,
     });
 
     return result;
@@ -94,13 +93,11 @@ async function routeWithLLM(idea: any, logger?: Logger): Promise<Partial<AgentSt
 
     logger?.debug('OpenAI routing complete', {
       format: result.format,
-      tokensUsed: tokens,
     });
 
     return {
       chosenFormat: result.format,
       formatReasoning: result.reasoning,
-      tokensUsed: tokens,
     };
   } catch (openaiError) {
     logger?.warn('⚠️ OpenAI failed, falling back to Anthropic', {
@@ -115,13 +112,11 @@ async function routeWithLLM(idea: any, logger?: Logger): Promise<Partial<AgentSt
 
       logger?.debug('Anthropic routing complete', {
         format: result.format,
-        tokensUsed: tokens,
       });
 
       return {
         chosenFormat: result.format,
         formatReasoning: result.reasoning,
-        tokensUsed: tokens,
       };
     } catch (anthropicError) {
       throw new Error(

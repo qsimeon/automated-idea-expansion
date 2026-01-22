@@ -82,7 +82,6 @@ export async function createBlog(ideaData: unknown): Promise<{
 
   logger.info('=== BLOG CREATOR STARTED ===', {
     ideaTitle: idea.title,
-    bulletsCount: idea.bullets?.length || 0,
   });
 
   // STAGE 1: Planning
@@ -171,15 +170,13 @@ async function planBlog(
 ): Promise<z.infer<typeof BlogPlanSchema>> {
   const model = new ChatOpenAI({
     modelName: 'gpt-5-nano-2025-08-07',
-    temperature: 0.7,
+    // Note: GPT-5 Nano only supports default temperature (1)
     apiKey: process.env.OPENAI_API_KEY,
   });
 
   const structuredModel = model.withStructuredOutput(BlogPlanSchema);
 
   const prompt = `Plan a blog post for: "${idea.title}"
-
-${idea.bullets && idea.bullets.length > 0 ? `Key Points:\n${idea.bullets.map(b => `- ${b}`).join('\n')}` : ''}
 
 Create a plan including:
 1. Engaging title (can refine original)
@@ -215,8 +212,9 @@ async function generateBlogCells(
   idea: IdeaForCreator,
   logger: ReturnType<typeof createLogger>
 ): Promise<BlogGeneration> {
+  // Use Sonnet for complex structured output generation (Haiku doesn't handle complex schemas well)
   const model = new ChatAnthropic({
-    modelName: 'claude-haiku-4-5-20251001',
+    modelName: 'claude-sonnet-4-5-20250929',
     temperature: 0.8,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
@@ -230,8 +228,6 @@ Title: ${plan.title}
 Sections: ${plan.sections.join(', ')}
 Tone: ${plan.tone}
 Target Word Count: ${plan.targetWordCount}
-
-${idea.bullets && idea.bullets.length > 0 ? `KEY POINTS:\n${idea.bullets.map(b => `- ${b}`).join('\n')}` : ''}
 
 CELL STRUCTURE:
 

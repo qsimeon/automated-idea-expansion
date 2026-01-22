@@ -110,7 +110,6 @@ export async function runAgentPipeline({
     selectedIdea: finalState.selectedIdea?.title || 'None',
     chosenFormat: finalState.chosenFormat || 'None',
     contentGenerated: !!finalState.generatedContent,
-    tokensUsed: finalState.tokensUsed,
     errorCount: finalState.errors.length,
     durationMs: graphLogger.getDuration(),
   });

@@ -42,9 +42,7 @@ export const AgentState = Annotation.Root({
   // ROUTER AGENT OUTPUTS
   // ============================================================
 
-  // Output format: blog_post | github_repo
-  // Note: Images and social posts are components of blogs, not standalone formats
-  // Legacy: twitter_thread supported for backward compatibility but no longer created
+  // Output format: blog_post (with images + social share) | github_repo
   chosenFormat: Annotation<'blog_post' | 'github_repo' | null>,
 
   // Why this format was chosen
@@ -82,12 +80,6 @@ export const AgentState = Annotation.Root({
     reducer: (current, update) => [...current, ...update],
     default: () => [],
   }),
-
-  // Total tokens used (for cost tracking)
-  tokensUsed: Annotation<number>({
-    reducer: (current, update) => current + update,
-    default: () => 0,
-  }),
 });
 
 /**
@@ -99,7 +91,7 @@ export type AgentStateType = typeof AgentState.State;
 
 /**
  * IMAGE SCHEMAS
- * Images are now subcomponents of blogs/threads, not standalone formats
+ * Images are subcomponents of blogs, not standalone formats
  */
 
 export interface ImageSpec {
@@ -157,49 +149,7 @@ export interface BlogReview {
 }
 
 /**
- * THREAD SCHEMAS (LEGACY - FOR BACKWARD COMPATIBILITY ONLY)
- *
- * These types are kept for viewing old twitter_thread outputs.
- * New content should use blog_post format with social share component.
- *
- * Multi-stage pipeline: Plan → Generate → Review
- */
-
-export interface ThreadPlan {
-  hook: string; // Opening post (most important)
-  threadLength: number; // 3-10 posts
-  includeHeroImage: boolean; // Image for first post
-  imageSpec?: ImageSpec; // Hero image spec
-  keyPoints: string[]; // Main points to cover
-  tone: string; // "informative", "entertaining", etc.
-  qualityRubric: ThreadQualityRubric;
-}
-
-export interface ThreadDraft {
-  posts: Array<{
-    order: number;
-    text: string; // Max 500 chars
-    characterCount: number;
-  }>;
-  heroImage?: GeneratedImage; // Optional hero image for post 1
-  totalPosts: number;
-}
-
-export interface ThreadReview {
-  overallScore: number;
-  categoryScores: {
-    hookStrength: number; // First post quality
-    flow: number; // Logical progression
-    engagement: number;
-    charCountCompliance: number; // All posts ≤500 chars?
-  };
-  recommendation: 'approve' | 'revise' | 'regenerate';
-  strengths: string[];
-  improvements: string[];
-}
-
-/**
- * QUALITY RUBRIC (Shared across content types)
+ * QUALITY RUBRIC
  */
 
 // Blog quality rubric
@@ -222,26 +172,6 @@ export interface BlogQualityRubric {
   };
 }
 
-// Thread quality rubric
-export interface ThreadQualityRubric {
-  hookStrength: {
-    weight: number;
-    criteria: string[];
-  };
-  flow: {
-    weight: number;
-    criteria: string[];
-  };
-  engagement: {
-    weight: number;
-    criteria: string[];
-  };
-  charCountCompliance: {
-    weight: number;
-    criteria: string[];
-  };
-}
-
 /**
  * STATE OBJECTS (like CodeCreationState but for content)
  */
@@ -251,16 +181,6 @@ export interface BlogCreationState {
   plan: BlogPlan | null;
   draft: BlogDraft | null;
   review: BlogReview | null;
-  attempts: number;
-  maxAttempts: number;
-  errors: string[];
-}
-
-export interface ThreadCreationState {
-  idea: IdeaForCreator;
-  plan: ThreadPlan | null;
-  draft: ThreadDraft | null;
-  review: ThreadReview | null;
   attempts: number;
   maxAttempts: number;
   errors: string[];

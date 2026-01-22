@@ -30,13 +30,12 @@ export type Idea = z.infer<typeof IdeaSchema>;
  * Minimal idea schema for creator functions
  * Only validates fields actually used by creators
  *
- * Philosophy: User enters raw idea → becomes title
- * No description needed - judge/router analyze the title
+ * Philosophy: User enters raw unstructured text
+ * The idea is just... the idea. No forced structure.
  */
 export const IdeaCreatorSchema = z.object({
   id: z.string(),
-  title: z.string(),
-  bullets: z.array(z.string()).optional().default([]),
-}).passthrough(); // Allow other fields to pass through
+  title: z.string(), // The raw idea text
+}).passthrough(); // Allow other fields to pass through (description, etc.)
 
 export type IdeaForCreator = z.infer<typeof IdeaCreatorSchema>;

@@ -61,7 +61,6 @@ export async function judgeAgent(
         selectedIdea: specificIdea,
         judgeReasoning: 'Manually selected by user',
         judgeScore: 100,
-        tokensUsed: 0, // No LLM call needed
       };
     }
   }
@@ -89,7 +88,6 @@ export async function judgeAgent(
       selectedIdea: allIdeas[0],
       judgeReasoning: 'Only one idea available',
       judgeScore: 80,
-      tokensUsed: 0,
     };
   }
 
@@ -107,7 +105,6 @@ export async function judgeAgent(
       title: result.selectedIdea?.title,
       score: result.judgeScore,
       reasoning: result.judgeReasoning,
-      tokensUsed: result.tokensUsed,
     });
 
     return result;
@@ -149,14 +146,12 @@ async function evaluateWithLLM(
     logger?.debug('OpenAI evaluation complete', {
       selectedIndex: result.selectedIndex,
       score: result.score,
-      tokensUsed: tokens,
     });
 
     return {
       selectedIdea,
       judgeReasoning: result.reasoning,
       judgeScore: result.score,
-      tokensUsed: tokens,
     };
   } catch (openaiError) {
     logger?.warn('⚠️  OpenAI failed, falling back to Anthropic', {
@@ -179,14 +174,12 @@ async function evaluateWithLLM(
       logger?.debug('Anthropic evaluation complete', {
         selectedIndex: result.selectedIndex,
         score: result.score,
-        tokensUsed: tokens,
       });
 
       return {
         selectedIdea,
         judgeReasoning: result.reasoning,
         judgeScore: result.score,
-        tokensUsed: tokens,
       };
     } catch (anthropicError) {
       throw new Error(

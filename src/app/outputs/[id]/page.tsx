@@ -6,7 +6,7 @@ import { use } from 'react';
 
 interface Output {
   id: string;
-  format: 'blog_post' | 'twitter_thread' | 'github_repo';
+  format: 'blog_post' | 'github_repo';
   content: any;
   created_at: string;
 }
@@ -140,7 +140,6 @@ export default function OutputViewerPage({ params }: { params: Promise<{ id: str
 
       {/* Format-specific viewer */}
       {output.format === 'blog_post' && <BlogViewer content={output.content} />}
-      {output.format === 'twitter_thread' && <MastodonViewer content={output.content} />}
       {output.format === 'github_repo' && <CodeViewer content={output.content} />}
     </div>
   );
@@ -245,72 +244,6 @@ function BlogViewer({ content }: { content: any }) {
         </div>
       )}
     </article>
-  );
-}
-
-// Mastodon Thread Viewer (LEGACY - FOR BACKWARD COMPATIBILITY)
-// This viewer is kept for displaying old twitter_thread outputs.
-// New content uses blog_post format with social share component.
-function MastodonViewer({ content }: { content: any }) {
-  return (
-    <div>
-      <h1 style={{ fontSize: '28px', marginBottom: '10px' }}>🦣 Mastodon Thread</h1>
-      <p style={{ color: '#666', marginBottom: '30px' }}>
-        {content.totalPosts} posts • Ready to post!
-      </p>
-
-      {/* Hero image for first post (if present) */}
-      {content.heroImage && (
-        <div
-          style={{
-            marginBottom: '30px',
-            borderRadius: '12px',
-            overflow: 'hidden',
-            border: '1px solid #e5e7eb',
-            backgroundColor: 'white',
-          }}
-        >
-          <img
-            src={content.heroImage.imageUrl}
-            alt={content.heroImage.caption || 'Hero image'}
-            style={{
-              width: '100%',
-              height: 'auto',
-              display: 'block',
-            }}
-          />
-          {content.heroImage.caption && (
-            <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
-              <p style={{ margin: 0, fontSize: '14px', color: '#6b7280', fontStyle: 'italic' }}>
-                {content.heroImage.caption}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gap: '15px' }}>
-        {content.posts.map((post: any) => (
-          <div
-            key={post.order}
-            style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              border: '1px solid #e5e7eb',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#999', marginBottom: '10px' }}>
-              Post {post.order} of {content.totalPosts}
-            </div>
-            <p style={{ fontSize: '16px', margin: 0, whiteSpace: 'pre-wrap' }}>{post.text}</p>
-            <div style={{ marginTop: '10px', fontSize: '12px', color: '#999' }}>
-              {post.text.length} / 500 characters
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
