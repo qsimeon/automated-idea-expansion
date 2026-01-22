@@ -7,7 +7,6 @@ import type { Logger } from '../logging/logger';
  * Agent State - The shared "memory" that all agents read from and write to
  *
  * Think of this as a notebook that gets passed between agents:
- * - Judge reads ideas, writes selectedIdea
  * - Router reads selectedIdea, writes chosenFormat
  * - Creator reads both, writes generatedContent
  * - Publisher reads everything, writes publishedUrl
@@ -19,24 +18,8 @@ export const AgentState = Annotation.Root({
 
   userId: Annotation<string>(),
 
-  // All pending ideas to evaluate
-  allIdeas: Annotation<Idea[]>,
-
-  // For manual trigger: specific idea to expand
-  specificIdeaId: Annotation<string | null>,
-
-  // ============================================================
-  // JUDGE AGENT OUTPUTS
-  // ============================================================
-
-  // The idea selected for expansion
+  // The idea to expand (user-selected)
   selectedIdea: Annotation<Idea | null>,
-
-  // Why this idea was chosen (for transparency)
-  judgeReasoning: Annotation<string>,
-
-  // Score 0-100 (how good is this idea)
-  judgeScore: Annotation<number>,
 
   // ============================================================
   // ROUTER AGENT OUTPUTS

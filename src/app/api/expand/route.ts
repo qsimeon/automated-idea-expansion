@@ -14,12 +14,23 @@ const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
  * Trigger the AI agent pipeline to expand an idea
  *
  * Body:
- * - ideaId (optional): Specific idea to expand. If not provided, judges all pending ideas.
+ * - ideaId (required): The idea to expand (user-selected)
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { ideaId } = body;
+
+    // Validate required ideaId
+    if (!ideaId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'ideaId is required',
+        },
+        { status: 400 }
+      );
+    }
 
     // Generate execution ID
     const executionId = crypto.randomUUID();
@@ -29,13 +40,13 @@ export async function POST(request: Request) {
     const logger = createLogger({
       executionId,
       userId: TEST_USER_ID,
-      ideaId: ideaId || 'auto-judge',
+      ideaId,
       stage: 'api-endpoint',
     });
 
     logger.info('📥 Expand request received', {
       userId: TEST_USER_ID,
-      specificIdeaId: ideaId || 'auto-judge (will select best)',
+      ideaId,
       timestamp: startTime.toISOString(),
     });
 
@@ -47,61 +58,33 @@ export async function POST(request: Request) {
       started_at: startTime.toISOString(),
     });
 
-    // Get ideas
-    let allIdeas;
-    if (ideaId) {
-      // Specific idea requested
-      const idea = await getIdeaById(ideaId, TEST_USER_ID);
-      if (!idea) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Idea not found: ${ideaId}`,
-          },
-          { status: 404 }
-        );
-      }
-      allIdeas = [idea];
-    } else {
-      // Get all pending ideas
-      allIdeas = await getPendingIdeas(TEST_USER_ID);
+    // Get the specific idea
+    const selectedIdea = await getIdeaById(ideaId, TEST_USER_ID);
+    if (!selectedIdea) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Idea not found: ${ideaId}`,
+        },
+        { status: 404 }
+      );
     }
 
-    logger.info('📊 Ideas fetched', {
-      ideaCount: allIdeas.length,
-      ideas: allIdeas.map(i => ({ id: i.id, title: i.title, status: i.status })),
+    logger.info('📊 Idea fetched', {
+      ideaId: selectedIdea.id,
+      title: selectedIdea.title,
+      status: selectedIdea.status,
     });
-
-    if (allIdeas.length === 0) {
-      // No ideas to expand
-      logger.warn('⚠️  No pending ideas to expand');
-
-      await supabaseAdmin
-        .from('executions')
-        .update({
-          status: 'completed',
-          error_message: 'No pending ideas to expand',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', executionId);
-
-      return NextResponse.json({
-        success: true,
-        message: 'No pending ideas to expand',
-        execution: { id: executionId, status: 'completed' },
-      });
-    }
 
     // Run the agent pipeline!
     logger.info('🚀 Starting agent pipeline', {
-      allIdeasCount: allIdeas.length,
-      specificIdeaId: ideaId || null,
+      ideaId: selectedIdea.id,
+      ideaTitle: selectedIdea.title,
     });
 
     const result = await runAgentPipeline({
       userId: TEST_USER_ID,
-      allIdeas,
-      specificIdeaId: ideaId || null,
+      selectedIdea,
       executionId,
       logger,
     });
@@ -122,8 +105,6 @@ export async function POST(request: Request) {
       .from('executions')
       .update({
         selected_idea_id: result.selectedIdea?.id || null,
-        judge_reasoning: result.judgeReasoning,
-        judge_score: result.judgeScore,
         format_chosen: result.chosenFormat,
         format_reasoning: result.formatReasoning,
         status,
@@ -206,7 +187,6 @@ export async function POST(request: Request) {
             }
           : null,
         format: result.chosenFormat,
-        judgeScore: result.judgeScore,
         durationSeconds,
         errors: result.errors,
       },

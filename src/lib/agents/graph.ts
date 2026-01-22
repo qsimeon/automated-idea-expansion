@@ -1,6 +1,5 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { AgentState, type AgentStateType } from './types';
-import { judgeAgent } from './judge-agent';
 import { routerAgent } from './router-agent';
 import { creatorAgent } from './creator-agent';
 import type { Logger } from '../logging/logger';
@@ -10,7 +9,7 @@ import type { Logger } from '../logging/logger';
  *
  * This is the "flowchart" that connects all our agents:
  *
- * START → Judge → Router → Creator → END
+ * START → Router → Creator → END
  *
  * Each agent:
  * 1. Reads from state (the shared "notebook")
@@ -21,7 +20,6 @@ import type { Logger } from '../logging/logger';
  * The graph automatically handles:
  * - Passing state between agents
  * - Error recovery
- * - Conditional routing (if judge finds no ideas, skip to END)
  */
 
 /**
@@ -33,7 +31,6 @@ export function createAgentGraph() {
 
   // Add nodes (agents)
   workflow
-    .addNode('judge', judgeAgent)
     .addNode('router', routerAgent)
     .addNode('creator', creatorAgent);
 
@@ -41,11 +38,9 @@ export function createAgentGraph() {
 
   // Set entry point (where the graph starts)
   // @ts-expect-error - LangGraph types don't properly infer node names
-  workflow.addEdge('__start__', 'judge');
+  workflow.addEdge('__start__', 'router');
 
-  // Simple linear flow for now (can add conditionals later)
-  // @ts-expect-error - LangGraph types don't properly infer node names
-  workflow.addEdge('judge', 'router');
+  // Linear flow: Router decides format → Creator generates content
   // @ts-expect-error - LangGraph types don't properly infer node names
   workflow.addEdge('router', 'creator');
 
@@ -63,22 +58,19 @@ export function createAgentGraph() {
  * This is the main entry point to run the workflow.
  *
  * @param userId - User ID
- * @param allIdeas - All pending ideas to evaluate
- * @param specificIdeaId - Optional: specific idea to expand (for manual trigger)
+ * @param selectedIdea - The idea to expand (user-selected)
  * @param executionId - Unique ID for this execution (for logging)
  * @param logger - Logger instance for tracking execution
  * @returns Final state with all results
  */
 export async function runAgentPipeline({
   userId,
-  allIdeas,
-  specificIdeaId = null,
+  selectedIdea,
   executionId,
   logger,
 }: {
   userId: string;
-  allIdeas: any[];
-  specificIdeaId?: string | null;
+  selectedIdea: any;
   executionId: string;
   logger: Logger;
 }): Promise<AgentStateType> {
@@ -91,16 +83,15 @@ export async function runAgentPipeline({
   // Initial state
   const initialState = {
     userId,
-    allIdeas,
-    specificIdeaId,
+    selectedIdea,
     executionId,
     logger,
   } as Partial<AgentStateType>;
 
   graphLogger.info('🚀 Starting agent pipeline', {
     userId,
-    ideaCount: allIdeas.length,
-    specificIdeaId: specificIdeaId || 'None (will judge all)',
+    ideaId: selectedIdea.id,
+    ideaTitle: selectedIdea.title,
   });
 
   // Run the graph!
