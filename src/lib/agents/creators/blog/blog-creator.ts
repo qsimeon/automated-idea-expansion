@@ -32,8 +32,9 @@ import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
  * - Type-safe at every layer
  *
  * Models:
- * - GPT-4o-mini: Planning, review
+ * - GPT-5 Nano: Planning (fast, cheap, excellent at structured reasoning)
  * - Claude Haiku 4.5: Content generation (best writing quality)
+ * - GPT-4o-mini: Review (fast, cost-effective validation)
  */
 
 const BlogPlanSchema = z.object({
@@ -169,7 +170,7 @@ async function planBlog(
   logger: ReturnType<typeof createLogger>
 ): Promise<z.infer<typeof BlogPlanSchema>> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
+    modelName: 'gpt-5-nano-2025-08-07',
     temperature: 0.7,
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -343,7 +344,7 @@ async function reviewBlogCells(
   logger: ReturnType<typeof createLogger>
 ): Promise<z.infer<typeof BlogReviewSchema>> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
+    modelName: 'gpt-4o-mini-2024-07-18',
     temperature: 0.5,
     apiKey: process.env.OPENAI_API_KEY,
   });

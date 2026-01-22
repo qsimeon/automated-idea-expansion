@@ -46,7 +46,7 @@ export async function generateSocialShare(
 
   // Step 1: Generate social post structure with LLM
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
+    modelName: 'gpt-4o-mini-2024-07-18',
     temperature: 0.8, // Higher temp for creative hook writing
     apiKey: process.env.OPENAI_API_KEY,
   });

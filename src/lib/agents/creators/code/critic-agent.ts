@@ -25,8 +25,8 @@ import { z } from 'zod';
  * - No manual JSON parsing or complex fallback logic needed
  * - Type-safe: schema directly matches CodeReview interface
  *
- * Model choice: GPT-5 Nano
- * - **Cost-effective**: Very cheap for review tasks
+ * Model choice: GPT-4o-mini
+ * - **Cost-effective**: Cheap for review tasks
  * - **Good at review**: Catches common bugs and issues
  * - **Fast**: Low latency
  * - We save the expensive model (Sonnet) for generation where it matters most
@@ -103,8 +103,8 @@ export async function reviewCode(
   }
 
   const model = new ChatOpenAI({
-    modelName: 'gpt-5-nano-2025-08-07',
-    // Note: GPT-5 nano only supports default temperature (1)
+    modelName: 'gpt-4o-mini-2024-07-18',
+    temperature: 0.5,
   });
 
   // Use structured output (guarantees valid JSON matching our schema)

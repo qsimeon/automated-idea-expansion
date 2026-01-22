@@ -8,13 +8,14 @@ import { ChatAnthropic } from '@langchain/anthropic';
  * Uses the right model for each job to optimize cost and quality.
  *
  * Model Recommendations:
- * - Planning: GPT-4o-mini (fast, cheap, good at structure)
+ * - Planning: GPT-5 Nano (fast, cheap, excellent at structured reasoning)
  * - Text Generation: Claude Haiku 4.5 (excellent writing quality)
  * - Image Prompts: GPT-4o-mini (creative prompt engineering)
  * - Review: GPT-4o-mini (fast, cost-effective validation)
  * - Coding: Claude Sonnet 4.5 (best at code generation)
  *
  * Cost Comparison (per 1M tokens):
+ * - GPT-5 Nano: ~$0.10 input / $0.40 output (cheapest)
  * - GPT-4o-mini: ~$0.15 input / $0.60 output
  * - Claude Haiku 4.5: ~$0.25 input / $1.25 output
  * - Claude Sonnet 4.5: ~$3.00 input / $15.00 output
@@ -29,7 +30,7 @@ export function createModel(type: ModelType, temperature: number = 0.7) {
   switch (type) {
     case 'gpt-4o-mini':
       return new ChatOpenAI({
-        modelName: 'gpt-4o-mini',
+        modelName: 'gpt-4o-mini-2024-07-18',
         temperature,
         apiKey: process.env.OPENAI_API_KEY,
       });

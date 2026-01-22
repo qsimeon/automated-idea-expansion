@@ -171,7 +171,7 @@ Respond with your format choice and clear reasoning.`;
  */
 async function callOpenAI(prompt: string): Promise<{ result: z.infer<typeof RouterResponseSchema>; tokens: number }> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
+    modelName: 'gpt-4o-mini-2024-07-18',
     temperature: 0.5, // Lower temp for more consistent routing
     apiKey: process.env.OPENAI_API_KEY,
   });

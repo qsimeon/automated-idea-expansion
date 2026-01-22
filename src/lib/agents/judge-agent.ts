@@ -243,7 +243,7 @@ Important:
  */
 async function callOpenAI(prompt: string, ideas: Idea[]): Promise<{ result: z.infer<typeof JudgeResponseSchema>; tokens: number }> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini',
+    modelName: 'gpt-4o-mini-2024-07-18',
     temperature: 0.7, // Some creativity but mostly consistent
     apiKey: process.env.OPENAI_API_KEY,
   });
