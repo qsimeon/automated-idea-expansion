@@ -4,7 +4,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 
 ## 🎯 Current Status
 
-**Phase 2C Complete!** ✅ Unified Content Pipeline + Images as Components + Gemini Integration
+**Phase 2C Complete!** ✅ Unified Content Pipeline + Images as Components
 
 ### ✅ What's Working:
 
@@ -26,9 +26,9 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ **Router Agent** - Decides optimal output format (GPT-5 Nano)
 - ✅ **Creator Agents** - Generates content in **3 formats**:
   - 📝 **Blog Posts V2** - Multi-stage pipeline with optional images (1-3):
-    - Planning (Gemini Flash) → sections, tone, image specs
+    - Planning (GPT-4o-mini) → sections, tone, image specs
     - Generation (Claude Haiku) → markdown + images with captions
-    - Review (Gemini Flash) → quality scoring
+    - Review (GPT-4o-mini) → quality scoring
   - 🦣 **Mastodon Threads** - 500-char social posts with optional hero image
   - 💻 **Code Projects V2** - 5-stage pipeline with iteration:
     - Planning (GPT-5 Nano) → quality rubrics, implementation steps
@@ -48,12 +48,12 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
   - Up to 3 images per blog with captions and alt text
 - ✅ **Blog Creator V2** - Multi-stage pipeline:
   - Planning → Generation (Text + Images) → Review
-  - Uses Gemini Flash for planning/review (50% cost savings)
+  - Uses GPT-4o-mini for planning/review (fast and cost-effective)
   - Uses Claude Haiku for text generation (superior writing quality)
-- ✅ **Google Gemini Integration**:
-  - Created model-factory.ts for centralized model selection
-  - Gemini Flash for planning/review ($0.075/1M vs $0.15/1M = 50% savings)
-  - Automatic fallback to GPT-4o-mini if GOOGLE_API_KEY not set
+- ✅ **Model Factory** - Centralized model selection:
+  - Created model-factory.ts for consistent model usage
+  - OpenAI (GPT-4o-mini) for planning/review
+  - Anthropic (Claude Haiku/Sonnet) for text generation and coding
 - ✅ **Enhanced Schemas** - BlogPlan, BlogDraft, BlogReview, ImageSpec, GeneratedImage
 - ✅ **GitHub Repo Links** - Added "View on GitHub" buttons to code output cards
 
@@ -72,6 +72,216 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Up to 5 iteration cycles
 - ✅ Smart decisions (regenerate all vs fix specific files)
 - ✅ Score tracking and decline detection
+
+---
+
+## 🏗️ System Architecture
+
+The automated idea expansion pipeline uses LangGraph to orchestrate a multi-stage AI workflow:
+
+### High-Level Flow
+
+```
+User Idea → Judge Agent → Router Agent → Creator Agent → Saved Output
+              ↓             ↓               ↓
+           Evaluates    Chooses         Generates
+           & selects    format          content
+           best idea    (blog/          (3-5 stages
+                        thread/         depending on
+                        code)           format)
+```
+
+### Agent Pipeline Details
+
+**1. Judge Agent** (`judge-agent.ts`)
+- **Model:** GPT-4o-mini
+- **Task:** Evaluate all pending ideas and select the best one
+- **Criteria:** Impact, Originality, Feasibility, Timeliness, Clarity
+- **Output:** Selected idea + score (0-100) + reasoning
+
+**2. Router Agent** (`router-agent.ts`)
+- **Model:** GPT-4o-mini
+- **Task:** Decide optimal output format based on value to audience
+- **Options:**
+  - `blog_post` - Deep explanations, tutorials (1000-2000 words)
+  - `twitter_thread` - Quick insights, tips (5-10 posts × 500 chars)
+  - `github_repo` - Code demonstrations, experiments
+- **Output:** Format + reasoning
+
+**3. Creator Agent** (`creator-agent.ts`)
+- **Task:** Route to format-specific creator and orchestrate generation
+
+#### Blog Creator V2 (3 stages)
+```
+Plan → Generate → Review
+  ↓       ↓         ↓
+GPT    Claude    GPT
+mini   Haiku     mini
+```
+- **Stage 1 (Plan):** Decide title, sections, tone, image specs
+- **Stage 2 (Generate):** Create markdown + 1-3 images with captions
+- **Stage 3 (Review):** Score on clarity, accuracy, engagement, image relevance
+
+#### Mastodon Thread Creator V2 (3 stages)
+```
+Plan → Generate → Review
+  ↓       ↓         ↓
+GPT    Claude    GPT
+mini   Haiku     mini
+```
+- **Stage 1 (Plan):** Decide hook, thread length, key points, hero image
+- **Stage 2 (Generate):** Create 3-10 posts (≤500 chars each) + optional hero image
+- **Stage 3 (Review):** Score on hook strength, flow, engagement, char compliance
+
+#### Code Creator V2 (5 stages with iteration)
+```
+Plan → Generate → Review → Iterate? → Publish
+  ↓       ↓         ↓         ↓          ↓
+GPT    Claude    GPT    Score<75?    GitHub
+mini   Sonnet    mini   Fix/Regen    (or dry-run)
+```
+- **Stage 1 (Plan):** Decide output type, language, architecture, quality rubric
+- **Stage 2 (Generate):** Create all files, README, dependencies
+- **Stage 3 (Review):** Score on correctness, security, quality, completeness
+- **Stage 4 (Iterate):** If score < 75, either regenerate (score < 60) or fix specific files
+- **Stage 5 (Publish):** Create GitHub repo (real or dry-run)
+
+### Model Selection Strategy
+
+| Task | Model | Why? |
+|------|-------|------|
+| Judge/Router | GPT-4o-mini | Fast, cheap ($0.15/1M input), good reasoning |
+| Planning | GPT-4o-mini | Fast, cost-effective, good at structure |
+| Text Generation | Claude Haiku | Superior writing quality ($0.25/1M input) |
+| Code Generation | Claude Sonnet | Best at code (benchmarks leader, $3/1M input) |
+| Review | GPT-4o-mini | Fast, consistent evaluation |
+
+### Typical Costs Per Expansion
+
+- **Blog Post:** ~$0.019 (planning + writing + 3 images + review)
+- **Mastodon Thread:** ~$0.010 (planning + 5-10 posts + review)
+- **Code Project:** $0.016-0.034 (depends on iterations, GitHub publishing)
+
+---
+
+## 📋 Understanding the Logs
+
+The system uses emoji-prefixed structured logging for easy visual parsing and tracing:
+
+### Log Emoji Guide
+
+| Emoji | Meaning | Appears In |
+|-------|---------|------------|
+| 📥 | Request received | API endpoint |
+| 🚀 | Pipeline starting | Graph orchestrator |
+| 📊 | Evaluating/analyzing | Judge agent |
+| 🎯 | Routing/deciding | Router agent |
+| 📝 | Blog creation | Blog creator |
+| 🦣 | Thread creation | Mastodon creator |
+| 💻 | Code creation | Code creator |
+| 📋 | Planning stage | All creators (stage 1) |
+| 🛠️ | Generation stage | All creators (stage 2) |
+| 🔍 | Review stage | All creators (stage 3) |
+| 🔄 | Iteration/regeneration | Code creator (stage 4) |
+| ✅ | Success/complete | All stages |
+| ❌ | Error/failure | Error handling |
+| ⚠️ | Warning | Fallbacks, issues |
+| 💰 | Token usage | Token tracking |
+| 🐛 | Issues found | Code review |
+| 🔒 | Security concerns | Code review |
+
+### Log Format
+
+Each log entry includes:
+- **Timestamp:** ISO 8601 format
+- **Log Level:** DEBUG, INFO, WARN, ERROR
+- **Execution ID:** Unique identifier for tracing (e.g., `exec-abc123`)
+- **Stage:** Which agent or component is logging
+- **Message:** Human-readable description
+- **Metadata:** Structured data (counts, IDs, scores, etc.)
+
+**Example:**
+```
+[2026-01-21T15:30:45.123Z] INFO  [exec-abc123] [judge-agent] 📊 Evaluating ideas
+   candidateCount: 5
+   specificIdeaId: auto-judge (will select best)
+```
+
+### Reading a Full Log Sequence
+
+Example of a successful blog expansion:
+
+```
+[2026-01-21T15:30:45.123Z] INFO  [exec-abc123] [api-endpoint] 📥 Expand request received
+   ideaCount: 5
+
+[2026-01-21T15:30:46.789Z] INFO  [exec-abc123] [judge-agent] 📊 Evaluating ideas
+   candidateCount: 5
+
+[2026-01-21T15:30:48.123Z] INFO  [exec-abc123] [judge-agent] ✅ Idea selected
+   title: "Understanding depth perception"
+   score: 85
+
+[2026-01-21T15:30:48.456Z] INFO  [exec-abc123] [router-agent] 🎯 Analyzing idea for format
+
+[2026-01-21T15:30:49.789Z] INFO  [exec-abc123] [router-agent] ✅ Format selected
+   format: blog_post
+
+[2026-01-21T15:30:50.123Z] INFO  [exec-abc123] [blog-creator] === BLOG CREATOR V2 STARTED ===
+
+[2026-01-21T15:30:50.456Z] INFO  [exec-abc123] [blog-creator] STAGE 1: Planning started
+
+[2026-01-21T15:30:52.789Z] INFO  [exec-abc123] [blog-creator] STAGE 1: Planning complete
+   sectionsCount: 5
+   imagesCount: 2
+
+[2026-01-21T15:30:53.123Z] INFO  [exec-abc123] [blog-creator] STAGE 2: Generation started
+
+[2026-01-21T15:31:05.456Z] INFO  [exec-abc123] [blog-creator] STAGE 2: Generation complete
+   wordCount: 1847
+   imagesGenerated: 2
+
+[2026-01-21T15:31:05.789Z] INFO  [exec-abc123] [blog-creator] STAGE 3: Review started
+
+[2026-01-21T15:31:07.123Z] INFO  [exec-abc123] [blog-creator] STAGE 3: Review complete
+   overallScore: 88
+   recommendation: approve
+
+[2026-01-21T15:31:07.456Z] INFO  [exec-abc123] [blog-creator] === BLOG CREATOR V2 COMPLETE ===
+   durationMs: 17333
+   totalTokensUsed: 15234
+
+[2026-01-21T15:31:08.789Z] INFO  [exec-abc123] [api-endpoint] ✅ Expansion complete
+   status: success
+   durationSeconds: 23
+```
+
+### Troubleshooting with Logs
+
+**Finding Errors:**
+1. Look for `ERROR` log level or `❌` emoji
+2. Find the execution ID (e.g., `[exec-abc123]`)
+3. Search for that execution ID to see full context
+4. Check which stage failed (judge/router/creator)
+5. Look at the error details and stack trace
+
+**Tracing an Execution:**
+1. Get the execution ID from the first log line
+2. Filter/search logs for that ID
+3. Follow the progression:
+   ```
+   api-endpoint → judge-agent → router-agent → creator → api-endpoint
+   ```
+
+**Common Issues:**
+
+| Error Pattern | Likely Cause | Solution |
+|---------------|--------------|----------|
+| `Cannot read properties of undefined (reading '_zod')` | Model instantiation issue | ✅ Fixed in this update |
+| `Failed to generate content: 401` | API key invalid/missing | Check `.env.local` |
+| `Quality score < 75 after 5 iterations` | Idea too complex/vague | Refine idea description |
+| `No pending ideas available` | All ideas already expanded | Add new ideas |
+| `GitHub credentials not found` | Missing GitHub token | Add to `.env.local` (optional) |
 
 ### 🚧 What's Coming Next:
 
@@ -464,8 +674,9 @@ This project teaches:
    - Agent-to-agent communication patterns
 
 2. **Cost-Effective AI Architecture**
-   - Using cheaper models (GPT-4o-mini) for most tasks
-   - Ultra-cheap models (Gemini Flash) for validation
+   - Using GPT-4o-mini for planning/review (fast and cost-effective)
+   - Claude Haiku for text generation (superior writing quality)
+   - Claude Sonnet for code generation (best coding capabilities)
    - Token usage monitoring and optimization
 
 3. **Modern Full-Stack Development**
@@ -514,7 +725,7 @@ This is a learning project following a comprehensive implementation plan. Each p
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
-- [Google Gemini API](https://ai.google.dev/gemini-api/docs)
+- [Anthropic API Reference](https://docs.anthropic.com/en/api/getting-started)
 - [Supabase Documentation](https://supabase.com/docs)
 - [Next.js 15 Documentation](https://nextjs.org/docs)
 

@@ -3,6 +3,7 @@ import { AgentState, type AgentStateType } from './types';
 import { judgeAgent } from './judge-agent';
 import { routerAgent } from './router-agent';
 import { creatorAgent } from './creator-agent';
+import type { Logger } from '../logging/logger';
 
 /**
  * AGENT PIPELINE GRAPH
@@ -65,6 +66,7 @@ export function createAgentGraph() {
  * @param allIdeas - All pending ideas to evaluate
  * @param specificIdeaId - Optional: specific idea to expand (for manual trigger)
  * @param executionId - Unique ID for this execution (for logging)
+ * @param logger - Logger instance for tracking execution
  * @returns Final state with all results
  */
 export async function runAgentPipeline({
@@ -72,14 +74,19 @@ export async function runAgentPipeline({
   allIdeas,
   specificIdeaId = null,
   executionId,
+  logger,
 }: {
   userId: string;
   allIdeas: any[];
   specificIdeaId?: string | null;
   executionId: string;
+  logger: Logger;
 }): Promise<AgentStateType> {
   // Create the graph
   const graph = createAgentGraph();
+
+  // Create child logger for graph orchestration
+  const graphLogger = logger.child({ stage: 'graph-orchestrator' });
 
   // Initial state
   const initialState = {
@@ -87,22 +94,26 @@ export async function runAgentPipeline({
     allIdeas,
     specificIdeaId,
     executionId,
+    logger,
   } as Partial<AgentStateType>;
 
-  console.log('🚀 Starting agent pipeline...');
-  console.log(`   User: ${userId}`);
-  console.log(`   Ideas to evaluate: ${allIdeas.length}`);
-  console.log(`   Specific idea: ${specificIdeaId || 'None (will judge all)'}`);
+  graphLogger.info('🚀 Starting agent pipeline', {
+    userId,
+    ideaCount: allIdeas.length,
+    specificIdeaId: specificIdeaId || 'None (will judge all)',
+  });
 
   // Run the graph!
   const finalState = await graph.invoke(initialState);
 
-  console.log('✅ Agent pipeline complete!');
-  console.log(`   Selected idea: ${finalState.selectedIdea?.title || 'None'}`);
-  console.log(`   Chosen format: ${finalState.chosenFormat || 'None'}`);
-  console.log(`   Content generated: ${finalState.generatedContent ? 'Yes' : 'No'}`);
-  console.log(`   Tokens used: ${finalState.tokensUsed}`);
-  console.log(`   Errors: ${finalState.errors.length}`);
+  graphLogger.info('✅ Agent pipeline complete', {
+    selectedIdea: finalState.selectedIdea?.title || 'None',
+    chosenFormat: finalState.chosenFormat || 'None',
+    contentGenerated: !!finalState.generatedContent,
+    tokensUsed: finalState.tokensUsed,
+    errorCount: finalState.errors.length,
+    durationMs: graphLogger.getDuration(),
+  });
 
   return finalState;
 }

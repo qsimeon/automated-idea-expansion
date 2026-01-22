@@ -1,4 +1,5 @@
-import { createModel, ModelRecommendations } from '../model-factory';
+import { ChatOpenAI } from '@langchain/openai';
+import { ChatAnthropic } from '@langchain/anthropic';
 import { generateImageForContent } from './image-creator';
 import type {
   BlogPlan,
@@ -8,6 +9,7 @@ import type {
   GeneratedImage,
 } from '../types';
 import { z } from 'zod';
+import { createLogger } from '@/lib/logging/logger';
 
 /**
  * BLOG CREATOR V2 - Multi-Stage Pipeline with Images
@@ -78,8 +80,15 @@ export async function createBlogV2(idea: any): Promise<{
   content: any; // BlogDraft but adapted to match existing BlogPost interface
   tokensUsed: number;
 }> {
-  console.log(`📝 === BLOG CREATOR V2 ===`);
-  console.log(`   Idea: "${idea.title}"`);
+  const logger = createLogger({
+    ideaId: idea.id,
+    stage: 'blog-creator',
+  });
+
+  logger.info('=== BLOG CREATOR V2 STARTED ===', {
+    ideaTitle: idea.title,
+    ideaDescription: idea.description?.substring(0, 100),
+  });
 
   const state: BlogCreationState = {
     idea,
@@ -93,36 +102,83 @@ export async function createBlogV2(idea: any): Promise<{
   };
 
   // STAGE 1: Planning
-  console.log(`\n📋 STAGE 1: Planning`);
-  const planResult = await planBlog(idea);
+  logger.info('STAGE 1: Planning started');
+  const planResult = await planBlog(idea, logger);
   state.plan = planResult.plan;
   state.totalTokens += planResult.tokensUsed;
-  console.log(`   ✅ Plan complete`);
-  console.log(`   📊 Sections: ${state.plan.sections.length}`);
-  console.log(`   🎨 Images: ${state.plan.imageSpecs.length}`);
+  logger.trackTokens({
+    input: Math.floor(planResult.tokensUsed * 0.4),
+    output: Math.floor(planResult.tokensUsed * 0.6),
+    model: 'gpt-4o-mini',
+  });
+  logger.info('STAGE 1: Planning complete', {
+    title: state.plan.title,
+    sectionsCount: state.plan.sections.length,
+    sections: state.plan.sections,
+    tone: state.plan.tone,
+    targetWordCount: state.plan.targetWordCount,
+    includeImages: state.plan.includeImages,
+    imagesCount: state.plan.imageSpecs.length,
+    imageSpecs: state.plan.imageSpecs.map((spec) => spec.concept),
+  });
 
   // STAGE 2: Generation (Text + Images)
-  console.log(`\n🛠️  STAGE 2: Generation`);
-  const draftResult = await generateBlog(state.plan, idea);
+  logger.info('STAGE 2: Generation started', {
+    targetWordCount: state.plan.targetWordCount,
+    plannedImages: state.plan.imageSpecs.length,
+  });
+  const draftResult = await generateBlog(state.plan, idea, logger);
   state.draft = draftResult.draft;
   state.totalTokens += draftResult.tokensUsed;
-  console.log(`   ✅ Draft complete`);
-  console.log(`   📝 Words: ${state.draft.wordCount}`);
-  console.log(`   🖼️  Images generated: ${state.draft.images.length}`);
+  logger.trackTokens({
+    input: Math.floor(draftResult.tokensUsed * 0.3),
+    output: Math.floor(draftResult.tokensUsed * 0.7),
+    model: 'claude-3-5-haiku-20241022',
+  });
+  logger.info('STAGE 2: Generation complete', {
+    title: state.draft.title,
+    wordCount: state.draft.wordCount,
+    targetWordCount: state.plan.targetWordCount,
+    wordCountDelta: state.draft.wordCount - state.plan.targetWordCount,
+    readingTimeMinutes: state.draft.readingTimeMinutes,
+    imagesGenerated: state.draft.images.length,
+    sectionsCount: state.draft.sections.length,
+  });
 
   // STAGE 3: Review
-  console.log(`\n🔍 STAGE 3: Review`);
-  const reviewResult = await reviewBlog(state.draft, state.plan);
+  logger.info('STAGE 3: Review started');
+  const reviewResult = await reviewBlog(state.draft, state.plan, logger);
   state.review = reviewResult.review;
   state.totalTokens += reviewResult.tokensUsed;
-  console.log(`   📊 Score: ${state.review.overallScore}/100`);
-  console.log(`   ✅ Recommendation: ${state.review.recommendation}`);
+  logger.trackTokens({
+    input: Math.floor(reviewResult.tokensUsed * 0.6),
+    output: Math.floor(reviewResult.tokensUsed * 0.4),
+    model: 'gpt-4o-mini',
+  });
+  logger.info('STAGE 3: Review complete', {
+    overallScore: state.review.overallScore,
+    categoryScores: state.review.categoryScores,
+    recommendation: state.review.recommendation,
+    strengths: state.review.strengths,
+    improvements: state.review.improvements,
+  });
 
   // TODO: Optional iteration loop (similar to code-creator-v2)
   // For now, we accept the first draft
 
-  console.log(`\n✅ === BLOG COMPLETE ===`);
-  console.log(`   Total tokens: ${state.totalTokens}`);
+  const totalTokens = logger.getTotalTokens();
+  const duration = logger.getDuration();
+
+  logger.info('=== BLOG CREATOR V2 COMPLETE ===', {
+    durationMs: duration,
+    durationSeconds: (duration / 1000).toFixed(2),
+    totalTokensUsed: state.totalTokens,
+    trackedTokens: totalTokens,
+    finalScore: state.review.overallScore,
+    recommendation: state.review.recommendation,
+    wordCount: state.draft.wordCount,
+    imagesCount: state.draft.images.length,
+  });
 
   // Transform to match existing BlogPost interface
   return {
@@ -144,11 +200,18 @@ export async function createBlogV2(idea: any): Promise<{
  * STAGE 1: Planning Agent
  * Decides structure, tone, sections, and whether to include images
  */
-async function planBlog(idea: any): Promise<{
+async function planBlog(idea: any, logger: ReturnType<typeof createLogger>): Promise<{
   plan: BlogPlan;
   tokensUsed: number;
 }> {
-  const model = createModel(ModelRecommendations.planning, 0.7);
+  const modelName = 'gpt-4o-mini';
+  logger.info('Planning: Initializing model', { model: modelName, temperature: 0.7 });
+
+  const model = new ChatOpenAI({
+    modelName,
+    temperature: 0.7,
+    apiKey: process.env.OPENAI_API_KEY,
+  });
   const structuredModel = model.withStructuredOutput(BlogPlanSchema);
 
   const prompt = `Plan a blog post for: "${idea.title}"
@@ -174,10 +237,17 @@ Guidelines:
 Return a detailed plan.`;
 
   try {
+    logger.info('Planning: Invoking LLM', { promptLength: prompt.length });
     const plan = (await structuredModel.invoke(prompt)) as BlogPlan;
+    logger.info('Planning: Plan received successfully', {
+      title: plan.title,
+      sectionsCount: plan.sections.length,
+      includeImages: plan.includeImages,
+    });
     return { plan, tokensUsed: 0 }; // Estimate if needed
   } catch (error) {
-    console.error('Planning failed:', error);
+    logger.error('Planning: Failed to generate plan', error instanceof Error ? error : { error });
+    logger.warn('Planning: Using fallback plan');
     // Fallback plan
     return {
       plan: {
@@ -207,12 +277,20 @@ Return a detailed plan.`;
  */
 async function generateBlog(
   plan: BlogPlan,
-  idea: any
+  idea: any,
+  logger: ReturnType<typeof createLogger>
 ): Promise<{ draft: BlogDraft; tokensUsed: number }> {
   let totalTokens = 0;
 
   // Step 2a: Generate text content
-  const model = createModel(ModelRecommendations.textGeneration, 0.8); // Claude Haiku for great writing
+  const modelName = 'claude-3-5-haiku-20241022';
+  logger.info('Generation: Initializing text model', { model: modelName, temperature: 0.8 });
+
+  const model = new ChatAnthropic({
+    modelName,
+    temperature: 0.8,
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
 
   const textPrompt = `Write a ${plan.targetWordCount}-word blog post with this plan:
 
@@ -235,33 +313,69 @@ Requirements:
 
 Write the complete blog post in markdown format.`;
 
+  logger.info('Generation: Invoking text generation', {
+    promptLength: textPrompt.length,
+    targetWordCount: plan.targetWordCount,
+  });
   const textResponse = await model.invoke(textPrompt);
   let markdown = textResponse.content.toString();
   totalTokens += 0; // Estimate if needed
+  logger.info('Generation: Text generation complete', {
+    markdownLength: markdown.length,
+    estimatedWords: markdown.split(/\s+/).length,
+  });
 
   // Step 2b: Generate images (if plan includes them)
   const images: GeneratedImage[] = [];
   if (plan.includeImages && plan.imageSpecs.length > 0) {
-    console.log(`   🎨 Generating ${plan.imageSpecs.length} images...`);
+    logger.info('Generation: Starting image generation', {
+      imagesPlanned: plan.imageSpecs.length,
+      imageSpecs: plan.imageSpecs.map((s) => s.concept),
+    });
 
-    for (const spec of plan.imageSpecs.slice(0, 3)) {
-      // Max 3 images
+    for (let i = 0; i < plan.imageSpecs.slice(0, 3).length; i++) {
+      const spec = plan.imageSpecs[i];
       try {
+        logger.info(`Generation: Generating image ${i + 1}/${plan.imageSpecs.length}`, {
+          concept: spec.concept,
+          placement: spec.placement,
+          style: spec.style,
+        });
         const image = await generateImageForContent(spec, markdown.substring(0, 500));
         images.push(image);
+        logger.info(`Generation: Image ${i + 1} generated successfully`, {
+          imageUrl: image.imageUrl,
+          caption: image.caption,
+        });
       } catch (error) {
-        console.error(`   ❌ Failed to generate image for ${spec.concept}:`, error);
+        logger.error(`Generation: Failed to generate image ${i + 1}`, {
+          concept: spec.concept,
+          error: error instanceof Error ? error.message : String(error),
+        });
         // Continue without this image
       }
     }
+
+    logger.info('Generation: Image generation complete', {
+      imagesGenerated: images.length,
+      imagesPlanned: plan.imageSpecs.length,
+    });
   }
 
   // Step 2c: Insert images into markdown
+  logger.info('Generation: Inserting images into markdown', { imagesCount: images.length });
   markdown = insertImagesIntoMarkdown(markdown, images);
 
   // Calculate metadata
   const wordCount = markdown.split(/\s+/).length;
   const readingTimeMinutes = Math.ceil(wordCount / 200);
+
+  logger.info('Generation: Draft metadata calculated', {
+    wordCount,
+    readingTimeMinutes,
+    targetWordCount: plan.targetWordCount,
+    wordCountAccuracy: `${((wordCount / plan.targetWordCount) * 100).toFixed(1)}%`,
+  });
 
   const draft: BlogDraft = {
     title: plan.title,
@@ -281,9 +395,17 @@ Write the complete blog post in markdown format.`;
  */
 async function reviewBlog(
   draft: BlogDraft,
-  plan: BlogPlan
+  plan: BlogPlan,
+  logger: ReturnType<typeof createLogger>
 ): Promise<{ review: BlogReview; tokensUsed: number }> {
-  const model = createModel(ModelRecommendations.review, 0.5); // Gemini Flash for fast review
+  const modelName = 'gpt-4o-mini';
+  logger.info('Review: Initializing model', { model: modelName, temperature: 0.5 });
+
+  const model = new ChatOpenAI({
+    modelName,
+    temperature: 0.5,
+    apiKey: process.env.OPENAI_API_KEY,
+  });
   const structuredModel = model.withStructuredOutput(BlogReviewSchema);
 
   const prompt = `Review this blog post:
@@ -311,10 +433,21 @@ Recommendation: "approve" (≥75), "revise" (60-74), "regenerate" (<60)
 Return structured review.`;
 
   try {
+    logger.info('Review: Invoking LLM', {
+      promptLength: prompt.length,
+      draftWordCount: draft.wordCount,
+      targetWordCount: plan.targetWordCount,
+    });
     const review = (await structuredModel.invoke(prompt)) as BlogReview;
+    logger.info('Review: Review received successfully', {
+      overallScore: review.overallScore,
+      recommendation: review.recommendation,
+      categoryScores: review.categoryScores,
+    });
     return { review, tokensUsed: 0 };
   } catch (error) {
-    console.error('Review failed:', error);
+    logger.error('Review: Failed to generate review', error instanceof Error ? error : { error });
+    logger.warn('Review: Using fallback review');
     // Fallback review
     return {
       review: {

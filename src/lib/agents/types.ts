@@ -1,5 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Idea } from '../db/types';
+import type { Logger } from '../logging/logger';
 
 /**
  * Agent State - The shared "memory" that all agents read from and write to
@@ -70,6 +71,9 @@ export const AgentState = Annotation.Root({
 
   // Execution ID (for database logging)
   executionId: Annotation<string>(),
+
+  // Logger instance for consistent logging across all agents
+  logger: Annotation<Logger | undefined>(),
 
   // Any errors that occurred (agents append to this)
   errors: Annotation<string[]>({

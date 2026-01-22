@@ -2,6 +2,17 @@ import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import type { AgentStateType } from './types';
 import type { Idea } from '../db/types';
+import type { Logger } from '../logging/logger';
+import { z } from 'zod';
+
+/**
+ * Zod schema for judge response (structured output)
+ */
+const JudgeResponseSchema = z.object({
+  selectedIndex: z.number().int().min(0),
+  score: z.number().min(0).max(100),
+  reasoning: z.string().min(1),
+});
 
 /**
  * JUDGE AGENT
@@ -22,12 +33,31 @@ import type { Idea } from '../db/types';
 export async function judgeAgent(
   state: AgentStateType
 ): Promise<Partial<AgentStateType>> {
-  const { allIdeas, specificIdeaId } = state;
+  const { allIdeas, specificIdeaId, logger } = state;
+
+  // Create child logger for judge agent
+  const judgeLogger = logger?.child({ stage: 'judge-agent' });
+
+  judgeLogger?.info('📊 Evaluating ideas', {
+    candidateCount: allIdeas?.length || 0,
+    specificIdeaId: specificIdeaId || 'None (will judge all)',
+    candidates: allIdeas?.map(i => ({
+      id: i.id,
+      title: i.title,
+      timesEvaluated: i.times_evaluated,
+    })),
+  });
 
   // If specific idea requested, use that
   if (specificIdeaId) {
     const specificIdea = allIdeas.find((idea) => idea.id === specificIdeaId);
     if (specificIdea) {
+      judgeLogger?.info('✅ Idea selected (manual)', {
+        ideaId: specificIdea.id,
+        title: specificIdea.title,
+        reasoning: 'Manually selected by user',
+      });
+
       return {
         selectedIdea: specificIdea,
         judgeReasoning: 'Manually selected by user',
@@ -39,6 +69,8 @@ export async function judgeAgent(
 
   // No ideas to evaluate
   if (!allIdeas || allIdeas.length === 0) {
+    judgeLogger?.warn('⚠️  No ideas to evaluate');
+
     return {
       selectedIdea: null,
       judgeReasoning: 'No pending ideas available',
@@ -49,6 +81,11 @@ export async function judgeAgent(
 
   // If only one idea, select it automatically
   if (allIdeas.length === 1) {
+    judgeLogger?.info('✅ Idea selected (only one available)', {
+      ideaId: allIdeas[0].id,
+      title: allIdeas[0].title,
+    });
+
     return {
       selectedIdea: allIdeas[0],
       judgeReasoning: 'Only one idea available',
@@ -59,9 +96,25 @@ export async function judgeAgent(
 
   // Multiple ideas - use LLM to judge
   try {
-    return await evaluateWithLLM(allIdeas);
+    judgeLogger?.info('🤖 Calling LLM to evaluate', {
+      ideaCount: allIdeas.length,
+      model: 'gpt-4o-mini (primary), claude-haiku (fallback)',
+    });
+
+    const result = await evaluateWithLLM(allIdeas, judgeLogger);
+
+    judgeLogger?.info('✅ Idea selected (LLM evaluation)', {
+      ideaId: result.selectedIdea?.id,
+      title: result.selectedIdea?.title,
+      score: result.judgeScore,
+      reasoning: result.judgeReasoning,
+      tokensUsed: result.tokensUsed,
+    });
+
+    return result;
   } catch (error) {
-    console.error('Judge agent failed:', error);
+    judgeLogger?.error('❌ Judge agent failed', error instanceof Error ? error : { message: String(error) });
+
     return {
       selectedIdea: null,
       judgeReasoning: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -75,22 +128,67 @@ export async function judgeAgent(
  * Use LLM to evaluate and select the best idea
  */
 async function evaluateWithLLM(
-  ideas: Idea[]
+  ideas: Idea[],
+  logger?: Logger
 ): Promise<Partial<AgentStateType>> {
   // Build evaluation prompt
   const prompt = buildEvaluationPrompt(ideas);
 
   // Try OpenAI first (cheaper, faster)
   try {
-    const result = await callOpenAI(prompt);
-    return parseJudgeResponse(result, ideas);
+    logger?.debug('Calling OpenAI (primary)', { model: 'gpt-4o-mini', ideaCount: ideas.length });
+
+    const { result, tokens } = await callOpenAI(prompt, ideas);
+
+    // Validate selectedIndex is within bounds
+    if (result.selectedIndex >= ideas.length) {
+      throw new Error(`selectedIndex ${result.selectedIndex} out of bounds (max: ${ideas.length - 1})`);
+    }
+
+    const selectedIdea = ideas[result.selectedIndex];
+
+    logger?.debug('OpenAI evaluation complete', {
+      selectedIndex: result.selectedIndex,
+      score: result.score,
+      tokensUsed: tokens,
+    });
+
+    return {
+      selectedIdea,
+      judgeReasoning: result.reasoning,
+      judgeScore: result.score,
+      tokensUsed: tokens,
+    };
   } catch (openaiError) {
-    console.warn('OpenAI failed, falling back to Anthropic:', openaiError);
+    logger?.warn('⚠️  OpenAI failed, falling back to Anthropic', {
+      error: openaiError instanceof Error ? openaiError.message : String(openaiError),
+    });
 
     // Fallback to Anthropic
     try {
-      const result = await callAnthropic(prompt);
-      return parseJudgeResponse(result, ideas);
+      logger?.debug('Calling Anthropic (fallback)', { model: 'claude-haiku', ideaCount: ideas.length });
+
+      const { result, tokens } = await callAnthropic(prompt, ideas);
+
+      // Validate selectedIndex is within bounds
+      if (result.selectedIndex >= ideas.length) {
+        throw new Error(`selectedIndex ${result.selectedIndex} out of bounds (max: ${ideas.length - 1})`);
+      }
+
+      const selectedIdea = ideas[result.selectedIndex];
+
+      logger?.debug('Anthropic evaluation complete', {
+        selectedIndex: result.selectedIndex,
+        score: result.score,
+        tokensUsed: tokens,
+      });
+
+      return {
+        selectedIdea,
+        judgeReasoning: result.reasoning,
+        judgeScore: result.score,
+        tokensUsed: tokens,
+      };
     } catch (anthropicError) {
       throw new Error(
         `Both LLMs failed. OpenAI: ${openaiError}. Anthropic: ${anthropicError}`
@@ -147,81 +245,47 @@ Important:
 }
 
 /**
- * Call OpenAI GPT-4o-mini
+ * Call OpenAI GPT-4o-mini with structured output
  */
-async function callOpenAI(prompt: string): Promise<{ content: string; tokens: number }> {
+async function callOpenAI(prompt: string, ideas: Idea[]): Promise<{ result: z.infer<typeof JudgeResponseSchema>; tokens: number }> {
   const model = new ChatOpenAI({
     modelName: 'gpt-4o-mini',
     temperature: 0.7, // Some creativity but mostly consistent
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const response = await model.invoke(prompt);
+  // Use structured output with Zod schema
+  const structuredModel = model.withStructuredOutput(JudgeResponseSchema);
+  const result = await structuredModel.invoke(prompt);
+
+  // Note: withStructuredOutput doesn't include usage metadata, estimate tokens
+  const tokens = 0; // Will be tracked separately if needed
 
   return {
-    content: response.content.toString(),
-    tokens: response.usage_metadata?.total_tokens || 0,
+    result: result as z.infer<typeof JudgeResponseSchema>,
+    tokens,
   };
 }
 
 /**
- * Call Anthropic Claude Haiku (fallback)
+ * Call Anthropic Claude Haiku (fallback) with structured output
  */
-async function callAnthropic(prompt: string): Promise<{ content: string; tokens: number }> {
+async function callAnthropic(prompt: string, ideas: Idea[]): Promise<{ result: z.infer<typeof JudgeResponseSchema>; tokens: number }> {
   const model = new ChatAnthropic({
     modelName: 'claude-3-5-haiku-20241022',
     temperature: 0.7,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
-  const response = await model.invoke(prompt);
+  // Use structured output with Zod schema
+  const structuredModel = model.withStructuredOutput(JudgeResponseSchema);
+  const result = await structuredModel.invoke(prompt);
+
+  // Note: withStructuredOutput doesn't include usage metadata, estimate tokens
+  const tokens = 0; // Will be tracked separately if needed
 
   return {
-    content: response.content.toString(),
-    tokens: response.usage_metadata?.total_tokens || 0,
-  };
-}
-
-/**
- * Parse the LLM response and extract the selected idea
- */
-function parseJudgeResponse(
-  response: { content: string; tokens: number },
-  ideas: Idea[]
-): Partial<AgentStateType> {
-  const { content, tokens } = response;
-
-  // Extract JSON from response (handles markdown code blocks)
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('No JSON found in LLM response');
-  }
-
-  const parsed = JSON.parse(jsonMatch[0]);
-
-  // Validate response
-  if (
-    typeof parsed.selectedIndex !== 'number' ||
-    parsed.selectedIndex < 0 ||
-    parsed.selectedIndex >= ideas.length
-  ) {
-    throw new Error('Invalid selectedIndex in response');
-  }
-
-  if (typeof parsed.score !== 'number' || parsed.score < 0 || parsed.score > 100) {
-    throw new Error('Invalid score in response');
-  }
-
-  if (typeof parsed.reasoning !== 'string' || parsed.reasoning.length === 0) {
-    throw new Error('Invalid reasoning in response');
-  }
-
-  const selectedIdea = ideas[parsed.selectedIndex];
-
-  return {
-    selectedIdea,
-    judgeReasoning: parsed.reasoning,
-    judgeScore: parsed.score,
-    tokensUsed: tokens,
+    result: result as z.infer<typeof JudgeResponseSchema>,
+    tokens,
   };
 }

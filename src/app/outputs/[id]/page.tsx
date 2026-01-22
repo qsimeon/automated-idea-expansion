@@ -189,6 +189,36 @@ function MastodonViewer({ content }: { content: any }) {
         {content.totalPosts} posts • Ready to post!
       </p>
 
+      {/* Hero image for first post (if present) */}
+      {content.heroImage && (
+        <div
+          style={{
+            marginBottom: '30px',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            border: '1px solid #e5e7eb',
+            backgroundColor: 'white',
+          }}
+        >
+          <img
+            src={content.heroImage.imageUrl}
+            alt={content.heroImage.caption || 'Hero image'}
+            style={{
+              width: '100%',
+              height: 'auto',
+              display: 'block',
+            }}
+          />
+          {content.heroImage.caption && (
+            <div style={{ padding: '12px 16px', backgroundColor: '#f9fafb' }}>
+              <p style={{ margin: 0, fontSize: '14px', color: '#6b7280', fontStyle: 'italic' }}>
+                {content.heroImage.caption}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'grid', gap: '15px' }}>
         {content.posts.map((post: any) => (
           <div

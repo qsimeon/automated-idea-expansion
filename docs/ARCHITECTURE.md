@@ -39,9 +39,9 @@ OPTIONAL STAGE 4: Iteration
 **Purpose:** Long-form articles (1000-2000 words) with optional images
 
 **Pipeline:**
-- Planning (Gemini Flash) → decides title, sections, tone, image needs
+- Planning (GPT-4o-mini) → decides title, sections, tone, image needs
 - Generation (Claude Haiku) → creates markdown + up to 3 images with captions
-- Review (Gemini Flash) → scores clarity, accuracy, engagement, image relevance
+- Review (GPT-4o-mini) → scores clarity, accuracy, engagement, image relevance
 
 **Features:**
 - Context-aware image generation (images understand blog content)
@@ -139,14 +139,14 @@ Router → blog (can include images) | thread (can include hero image) | code
 **Model Selection by Task:**
 | Task | Model | Why? |
 |------|-------|------|
-| Planning | Gemini Flash | Fast, cheap, good at structure (50% cost savings) |
+| Planning | GPT-4o-mini | Fast, cost-effective, good at structure |
 | Text Generation | Claude Haiku | Excellent writing quality |
 | Image Prompts | GPT-4o-mini | Creative prompt engineering |
-| Review | Gemini Flash | Fast, consistent evaluation |
+| Review | GPT-4o-mini | Fast, consistent evaluation |
 | Coding | Claude Sonnet 4.5 | Best at code generation |
 
 **Cost Impact:**
-- Planning/Review: $0.075/1M tokens (Gemini) vs $0.15/1M tokens (GPT) = **50% savings**
+- Planning/Review: GPT-4o-mini is fast and cost-effective ($0.15/1M input)
 - Writing: Claude Haiku quality >> GPT-4o-mini at similar cost
 - Coding: Claude Sonnet worth the premium ($3/1M input)
 
@@ -222,11 +222,9 @@ Routes to:
 ```typescript
 type ModelType =
   | 'gpt-5-nano'      // Ultra-cheap planning/review
-  | 'gpt-4o-mini'     // Balanced cost/quality
+  | 'gpt-4o-mini'     // Fast, cost-effective
   | 'claude-haiku'    // Fast, excellent writing
-  | 'claude-sonnet'   // Best coding/writing
-  | 'gemini-flash'    // Fast, cheap, good at structure
-  | 'gemini-pro';     // More capable Gemini
+  | 'claude-sonnet';  // Best coding/writing
 ```
 
 **Usage:**
@@ -237,11 +235,8 @@ import { createModel, ModelRecommendations } from './model-factory';
 const model = createModel(ModelRecommendations.planning, 0.7);
 
 // Explicit way:
-const model = createModel('gemini-flash', 0.7);
+const model = createModel('gpt-4o-mini', 0.7);
 ```
-
-**Automatic Fallbacks:**
-- If `GOOGLE_API_KEY` not set → falls back to `gpt-4o-mini`
 - Graceful degradation for reliability
 
 **Files:** `src/lib/agents/model-factory.ts`
@@ -267,7 +262,7 @@ const BlogPlanSchema = z.object({
   imageSpecs: z.array(ImageSpecSchema),
 });
 
-const model = createModel('gemini-flash');
+const model = createModel('gpt-4o-mini');
 const structuredModel = model.withStructuredOutput(BlogPlanSchema);
 
 const plan = await structuredModel.invoke(prompt);
@@ -329,11 +324,11 @@ interface QualityRubric {
 
 | Stage | Model | Tokens | Cost | Duration |
 |-------|-------|--------|------|----------|
-| Planning | Gemini Flash | ~500 | $0.0001 | 2s |
+| Planning | GPT-4o-mini | ~500 | $0.0002 | 2s |
 | Text Generation | Claude Haiku | ~2000 | $0.003 | 5s |
 | Image Generation (×3) | GPT-4o-mini + fal.ai | ~600 | $0.015 | 15s |
-| Review | Gemini Flash | ~800 | $0.0002 | 2s |
-| **Total** | | ~3900 | **$0.018** | **24s** |
+| Review | GPT-4o-mini | ~800 | $0.0003 | 2s |
+| **Total** | | ~3900 | **$0.019** | **24s** |
 
 ### Code Project Creation (with iteration)
 
@@ -356,7 +351,6 @@ interface QualityRubric {
 # AI Models
 OPENAI_API_KEY=sk-...              # GPT models
 ANTHROPIC_API_KEY=sk-ant-...       # Claude models
-GOOGLE_API_KEY=AIza...             # Gemini models (optional, falls back to GPT)
 
 # Image Generation
 FAL_KEY=...                        # fal.ai (primary)
@@ -381,7 +375,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 ```
 src/lib/agents/
 ├── types.ts                          # Shared types (AgentState, BlogPlan, etc.)
-├── model-factory.ts                  # Model selection (Gemini integration)
+├── model-factory.ts                  # Model selection (OpenAI + Anthropic)
 ├── router-agent.ts                   # Format routing
 ├── creator-agent.ts                  # Creator orchestrator
 │
@@ -407,6 +401,141 @@ src/lib/agents/
 **Legend:**
 - ✨ = New or significantly enhanced
 - .deprecated = Old version (kept for reference)
+
+---
+
+## Logging Architecture
+
+### Logger Utility
+
+The system uses a centralized `Logger` class for consistent, traceable logging across all agents.
+
+**Location:** `src/lib/logging/logger.ts`
+
+**Features:**
+- Execution ID generation and tracking
+- ISO timestamps on all logs
+- Context propagation (userId, ideaId, stage, subStage)
+- Token usage tracking
+- Stage duration measurement
+- Child logger creation for sub-stages
+
+**Usage Example:**
+```typescript
+import { createLogger } from '@/lib/logging/logger';
+
+const logger = createLogger({
+  executionId: 'exec-abc123',
+  userId: 'user-456',
+  ideaId: 'idea-789',
+  stage: 'blog-creator',
+});
+
+logger.info('📋 STAGE 1: Planning', { model: 'gpt-4o-mini' });
+logger.trackTokens({ input: 500, output: 1200, model: 'gpt-4o-mini' });
+
+const planLogger = logger.child({ subStage: 'planning' });
+planLogger.info('Plan created', { sections: 5 });
+```
+
+### Log Format
+
+**Human-Readable (Current):**
+```
+[2026-01-21T15:30:45.123Z] INFO  [exec-abc123] [stage/substage] Message
+   key: value
+   key2: value2
+```
+
+**Future: Structured JSON:**
+```json
+{
+  "timestamp": "2026-01-21T15:30:45.123Z",
+  "level": "INFO",
+  "executionId": "exec-abc123",
+  "userId": "user-456",
+  "ideaId": "idea-789",
+  "stage": "stage",
+  "subStage": "substage",
+  "message": "Message",
+  "data": { "key": "value" }
+}
+```
+
+### Log Levels
+
+- **DEBUG:** Detailed internal state (model parameters, prompt details, schema validation)
+- **INFO:** Key events (stage start/end, decisions made, metrics)
+- **WARN:** Recoverable issues (API key missing, using fallback, quality score low)
+- **ERROR:** Failures (exceptions, invalid state, API errors)
+
+### Tracing Executions
+
+Each pipeline run gets a unique execution ID (e.g., `exec-abc123`). To trace a specific run:
+
+1. Find the execution ID from the first log line
+2. Filter/search logs for that ID
+3. Follow the progression:
+   ```
+   [api-endpoint] → [judge-agent] → [router-agent] → [creator] → [api-endpoint]
+   ```
+
+### Context Propagation
+
+The logger is passed through the LangGraph state, making it available to all agents:
+
+**Flow:**
+```
+API Endpoint creates logger
+    ↓
+Graph receives logger in initial state
+    ↓
+Judge Agent: logger.child({ stage: 'judge-agent' })
+    ↓
+Router Agent: logger.child({ stage: 'router-agent' })
+    ↓
+Creator Agent: logger.child({ stage: 'creator-agent' })
+    ↓
+Format-specific creator: createLogger({ ideaId, stage: 'blog-creator' })
+```
+
+### Token Tracking
+
+Each stage tracks LLM token usage:
+
+```typescript
+// After LLM call
+logger.trackTokens({
+  input: 500,
+  output: 1200,
+  model: 'gpt-4o-mini',
+  cost: 0.00025  // optional
+});
+
+// At pipeline end
+const totalTokens = logger.getTotalTokens();
+// Returns: { input: 2500, output: 5600, total: 8100 }
+```
+
+### Performance Metrics
+
+Each logger tracks execution duration:
+
+```typescript
+const logger = createLogger({ stage: 'blog-creator' });
+// ... work happens ...
+const duration = logger.getDuration();  // milliseconds since creation
+```
+
+### Future Enhancements
+
+**Production Logging Infrastructure:**
+- Structured JSON output mode for machine parsing
+- Integration with log aggregation services (Datadog, Splunk, CloudWatch)
+- Persistent file logging with rotation
+- Real-time log streaming to frontend for user visibility
+- Automated alerting based on error patterns
+- Cost optimization tracking and alerts
 
 ---
 
@@ -508,7 +637,7 @@ npm install @langchain/google-genai --legacy-peer-deps
 ## Additional Resources
 
 - **LangChain Docs:** https://js.langchain.com/docs
-- **Gemini API:** https://ai.google.dev/tutorials/rest_quickstart
+- **Anthropic API:** https://docs.anthropic.com/en/api/getting-started
 - **Zod Schemas:** https://zod.dev/
 - **Structured Outputs:** https://js.langchain.com/docs/integrations/chat/structured_output
 

@@ -1,6 +1,16 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import type { AgentStateType } from './types';
+import type { Logger } from '../logging/logger';
+import { z } from 'zod';
+
+/**
+ * Zod schema for router response (structured output)
+ */
+const RouterResponseSchema = z.object({
+  format: z.enum(['blog_post', 'twitter_thread', 'github_repo']),
+  reasoning: z.string().min(1),
+});
 
 /**
  * ROUTER AGENT
@@ -24,10 +34,20 @@ import type { AgentStateType } from './types';
 export async function routerAgent(
   state: AgentStateType
 ): Promise<Partial<AgentStateType>> {
-  const { selectedIdea } = state;
+  const { selectedIdea, logger } = state;
+
+  // Create child logger for router agent
+  const routerLogger = logger?.child({ stage: 'router-agent' });
+
+  routerLogger?.info('🎯 Analyzing idea for format', {
+    ideaId: selectedIdea?.id || 'None',
+    title: selectedIdea?.title || 'No idea selected',
+  });
 
   // No idea selected
   if (!selectedIdea) {
+    routerLogger?.warn('⚠️ No idea to route');
+
     return {
       chosenFormat: null,
       formatReasoning: 'No idea was selected by Judge',
@@ -36,9 +56,23 @@ export async function routerAgent(
   }
 
   try {
-    return await routeWithLLM(selectedIdea);
+    routerLogger?.info('🤖 Calling LLM to determine format', {
+      ideaId: selectedIdea.id,
+      model: 'gpt-4o-mini (primary), claude-haiku (fallback)',
+    });
+
+    const result = await routeWithLLM(selectedIdea, routerLogger);
+
+    routerLogger?.info('✅ Format selected', {
+      format: result.chosenFormat,
+      reasoning: result.formatReasoning,
+      tokensUsed: result.tokensUsed,
+    });
+
+    return result;
   } catch (error) {
-    console.error('Router agent failed:', error);
+    routerLogger?.error('❌ Router agent failed', error instanceof Error ? error : { message: String(error) });
+
     return {
       chosenFormat: null,
       formatReasoning: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -50,20 +84,46 @@ export async function routerAgent(
 /**
  * Use LLM to decide the best format
  */
-async function routeWithLLM(idea: any): Promise<Partial<AgentStateType>> {
+async function routeWithLLM(idea: any, logger?: Logger): Promise<Partial<AgentStateType>> {
   const prompt = buildRoutingPrompt(idea);
 
   // Try OpenAI first
   try {
-    const result = await callOpenAI(prompt);
-    return parseRouterResponse(result);
+    logger?.debug('Calling OpenAI (primary)', { model: 'gpt-4o-mini' });
+
+    const { result, tokens } = await callOpenAI(prompt);
+
+    logger?.debug('OpenAI routing complete', {
+      format: result.format,
+      tokensUsed: tokens,
+    });
+
+    return {
+      chosenFormat: result.format,
+      formatReasoning: result.reasoning,
+      tokensUsed: tokens,
+    };
   } catch (openaiError) {
-    console.warn('OpenAI failed, falling back to Anthropic:', openaiError);
+    logger?.warn('⚠️ OpenAI failed, falling back to Anthropic', {
+      error: openaiError instanceof Error ? openaiError.message : String(openaiError),
+    });
 
     // Fallback to Anthropic
     try {
-      const result = await callAnthropic(prompt);
-      return parseRouterResponse(result);
+      logger?.debug('Calling Anthropic (fallback)', { model: 'claude-haiku' });
+
+      const { result, tokens } = await callAnthropic(prompt);
+
+      logger?.debug('Anthropic routing complete', {
+        format: result.format,
+        tokensUsed: tokens,
+      });
+
+      return {
+        chosenFormat: result.format,
+        formatReasoning: result.reasoning,
+        tokensUsed: tokens,
+      };
     } catch (anthropicError) {
       throw new Error(
         `Both LLMs failed. OpenAI: ${openaiError}. Anthropic: ${anthropicError}`
@@ -73,205 +133,84 @@ async function routeWithLLM(idea: any): Promise<Partial<AgentStateType>> {
 }
 
 /**
- * Detect if idea is code-oriented based on keywords
- */
-function detectCodeIntent(title: string, description?: string | null): {
-  isMLResearch: boolean;
-  isCodingProject: boolean;
-  isResearchExploration: boolean;
-  keywords: string[];
-} {
-  const text = `${title} ${description || ''}`.toLowerCase();
-
-  // ML/AI research keywords
-  const mlKeywords = [
-    'neural network', 'model', 'training', 'dataset', 'learning',
-    'classifier', 'embedding', 'contrastive', 'transformer', 'attention',
-    'backprop', 'gradient', 'optimization', 'loss function', 'epoch',
-    'overfitting', 'regularization', 'batch', 'weights', 'layers',
-  ];
-
-  // Coding/implementation keywords
-  const codeKeywords = [
-    'implement', 'build', 'create', 'cli', 'tool', 'algorithm',
-    'function', 'library', 'script', 'api', 'endpoint', 'server',
-    'parse', 'generate', 'process', 'automate', 'scrape',
-  ];
-
-  // Research/exploration keywords
-  const researchKeywords = [
-    'explore', 'experiment', 'test', 'benchmark', 'compare',
-    'analyze', 'visualization', 'plot', 'demonstrate', 'prototype',
-    'investigate', 'evaluate', 'measure', 'study',
-  ];
-
-  const foundKeywords: string[] = [];
-
-  const isMLResearch = mlKeywords.some(kw => {
-    if (text.includes(kw)) {
-      foundKeywords.push(kw);
-      return true;
-    }
-    return false;
-  });
-
-  const isCodingProject = codeKeywords.some(kw => {
-    if (text.includes(kw)) {
-      foundKeywords.push(kw);
-      return true;
-    }
-    return false;
-  });
-
-  const isResearchExploration = researchKeywords.some(kw => {
-    if (text.includes(kw)) {
-      foundKeywords.push(kw);
-      return true;
-    }
-    return false;
-  });
-
-  return { isMLResearch, isCodingProject, isResearchExploration, keywords: foundKeywords };
-}
-
-/**
  * Build the routing prompt
  */
 function buildRoutingPrompt(idea: any): string {
-  // Detect code intent
-  const codeSignals = detectCodeIntent(idea.title, idea.description);
-
-  let contextHints = '';
-  if (codeSignals.isMLResearch || codeSignals.isCodingProject || codeSignals.isResearchExploration) {
-    contextHints = `
-
-⚠️ CODE INTENT DETECTED:
-${codeSignals.isMLResearch ? '- ML/AI research idea (prefer github_repo for code exploration)' : ''}
-${codeSignals.isCodingProject ? '- Coding/implementation project (prefer github_repo for tool/demo)' : ''}
-${codeSignals.isResearchExploration ? '- Research exploration (prefer github_repo for hands-on experimentation)' : ''}
-Keywords found: ${codeSignals.keywords.join(', ')}
-
-Strong recommendation: Choose 'github_repo' for technical ideas that benefit from code.`;
-  }
-
-  return `You are a content format strategist. Your job is to determine the BEST format to expand this idea into content.
+  return `You are a content format strategist. Determine the BEST format for this idea.
 
 Available formats:
 
-1. **blog_post** - Long-form article (1000-2000 words) with optional images
-   Best for: Deep explanations, conceptual tutorials, thought pieces, how-things-work guides
-   Examples: "Understanding X", "How Y works under the hood", "The philosophy of Z"
-   Features: Can include up to 3 images with captions for visual concepts
-   ⚠️ NOT for: Technical implementations, ML experiments, coding projects
+1. **blog_post**: Deep explanations, conceptual understanding, how things work
+   - Best for: Tutorials, thought pieces, understanding complex topics
+   - Examples: "Understanding depth perception", "How async/await works", "The philosophy of functional programming"
+   - Length: 1000-2000 words with optional images
 
-2. **twitter_thread** - Social media thread (5-10 posts, 500 chars each) with optional hero image
-   Best for: Quick insights, hot takes, step-by-step tips, announcements, concise ideas
-   Examples: "5 tips for X", "Thread on Y", "Quick thoughts on Z"
-   Features: Can include a hero image for the first post
-   ⚠️ NOT for: Complex technical ideas that need code
+2. **twitter_thread**: Quick insights, tips, concise explanations
+   - Best for: Step-by-step guides, quick takes, lists, announcements
+   - Examples: "5 Python tips", "Thread on X concept", "Quick thoughts on Y"
+   - Length: 5-10 posts (500 chars each) with optional hero image
 
-3. **github_repo** - Interactive code project (Python/JS/TS app, notebook, or CLI tool)
-   Best for: Technical demonstrations, ML experiments, algorithm implementations,
-             data analysis, research explorations, tools, libraries, coding challenges
-   Examples: "Implement X algorithm", "Explore Y with code", "Build Z tool",
-             "Train model for X", "Contrastive learning experiment", "CLI for Y"
-   ✅ PREFER THIS for ML/AI research, coding projects, technical explorations
-   ✅ Code provides hands-on value - choose when in doubt between code and blog
+3. **github_repo**: Code demonstrations, technical experiments, interactive examples
+   - Best for: Implementations, algorithms, working demos, tools
+   - Examples: "Fibonacci visualizer", "Neural network from scratch", "CLI tool for X"
+   - Output: Jupyter notebook, CLI app, or demo script
 
-Analyze this idea:
-
+Idea:
 Title: ${idea.title}
-Description: ${idea.description || 'No description provided'}
-${contextHints}
+Description: ${idea.description || 'No description'}
 
-DECISION RULES:
-1. If idea contains ML/AI keywords → strongly prefer 'github_repo' (code exploration)
-2. If idea says "build X" or "implement Y" → 'github_repo' (tool/demo)
-3. If idea is hands-on/experimental → 'github_repo' (interactive value)
-4. If idea is purely conceptual/explanatory → 'blog_post' (images will be auto-generated if needed)
-5. If idea is quick tips/insights → 'twitter_thread'
-6. If idea is visual/artistic → 'blog_post' (the blog creator will include relevant images)
-7. When uncertain between code and blog → choose code (more valuable for technical ideas)
+Choose the format that provides MAXIMUM VALUE for this specific idea.
 
-Respond with ONLY valid JSON in this exact format:
-{
-  "format": "<blog_post|twitter_thread|github_repo>",
-  "reasoning": "<2-3 sentences explaining why this format is best>"
-}
+Decision criteria:
+- Would this idea benefit most from **explanation** (blog), **quick tips** (thread), or **hands-on code** (repo)?
+- What would an audience find most valuable?
+- Is the core insight conceptual (blog), actionable (thread), or technical (code)?
 
-Important:
-- Choose the format that would create the MOST value for this specific idea
-- Be aggressive about choosing 'github_repo' for technical ideas
-- Code is better than explanation for ML/research/implementation ideas
-- Images are automatically included in blogs/threads when relevant - don't let visual needs influence format choice`;
+Respond with your format choice and clear reasoning.`;
 }
 
 /**
- * Call OpenAI GPT-4o-mini
+ * Call OpenAI GPT-4o-mini with structured output
  */
-async function callOpenAI(prompt: string): Promise<{ content: string; tokens: number }> {
+async function callOpenAI(prompt: string): Promise<{ result: z.infer<typeof RouterResponseSchema>; tokens: number }> {
   const model = new ChatOpenAI({
     modelName: 'gpt-4o-mini',
     temperature: 0.5, // Lower temp for more consistent routing
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const response = await model.invoke(prompt);
+  // Use structured output with Zod schema
+  const structuredModel = model.withStructuredOutput(RouterResponseSchema);
+  const result = await structuredModel.invoke(prompt);
+
+  // Note: withStructuredOutput doesn't include usage metadata, estimate tokens
+  const tokens = 0; // Will be tracked separately if needed
 
   return {
-    content: response.content.toString(),
-    tokens: response.usage_metadata?.total_tokens || 0,
+    result: result as z.infer<typeof RouterResponseSchema>,
+    tokens,
   };
 }
 
 /**
- * Call Anthropic Claude Haiku (fallback)
+ * Call Anthropic Claude Haiku (fallback) with structured output
  */
-async function callAnthropic(prompt: string): Promise<{ content: string; tokens: number }> {
+async function callAnthropic(prompt: string): Promise<{ result: z.infer<typeof RouterResponseSchema>; tokens: number }> {
   const model = new ChatAnthropic({
     modelName: 'claude-3-5-haiku-20241022',
     temperature: 0.5,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
-  const response = await model.invoke(prompt);
+  // Use structured output with Zod schema
+  const structuredModel = model.withStructuredOutput(RouterResponseSchema);
+  const result = await structuredModel.invoke(prompt);
+
+  // Note: withStructuredOutput doesn't include usage metadata, estimate tokens
+  const tokens = 0; // Will be tracked separately if needed
 
   return {
-    content: response.content.toString(),
-    tokens: response.usage_metadata?.total_tokens || 0,
-  };
-}
-
-/**
- * Parse the LLM response and extract the format choice
- */
-function parseRouterResponse(response: {
-  content: string;
-  tokens: number;
-}): Partial<AgentStateType> {
-  const { content, tokens } = response;
-
-  // Extract JSON from response
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('No JSON found in LLM response');
-  }
-
-  const parsed = JSON.parse(jsonMatch[0]);
-
-  // Validate format
-  const validFormats = ['blog_post', 'twitter_thread', 'github_repo'];
-  if (!validFormats.includes(parsed.format)) {
-    throw new Error(`Invalid format: ${parsed.format}. Must be one of: ${validFormats.join(', ')}`);
-  }
-
-  if (typeof parsed.reasoning !== 'string' || parsed.reasoning.length === 0) {
-    throw new Error('Invalid reasoning in response');
-  }
-
-  return {
-    chosenFormat: parsed.format as 'blog_post' | 'twitter_thread' | 'github_repo',
-    formatReasoning: parsed.reasoning,
-    tokensUsed: tokens,
+    result: result as z.infer<typeof RouterResponseSchema>,
+    tokens,
   };
 }

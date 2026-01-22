@@ -1,7 +1,7 @@
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeFile } from './types';
-import { generateNotebookV2 } from './notebook-generator-v2';
+import { generateNotebookV3 } from './notebook-generator-v3'; // V3: Atomic schemas
 import { z } from 'zod';
 
 /**
@@ -58,7 +58,7 @@ export async function generateCode(
   // Route to specialized generator based on output type
   switch (plan.outputType) {
     case 'notebook':
-      return await generateNotebookV2(plan, idea); // Use new clean implementation
+      return await generateNotebookV3(plan, idea); // V3: Atomic schemas (h1, paragraph, code lines as primitives)
     case 'cli-app':
       return await generateCLIApp(plan, idea);
     case 'web-app':
@@ -73,8 +73,8 @@ export async function generateCode(
 }
 
 /**
- * Note: Old generateNotebook() function removed - we now use generateNotebookV2()
- * from ./notebook-generator-v2.ts which uses structured outputs with Zod schemas.
+ * Note: All notebook generation now uses generateNotebookV3() which employs atomic schemas.
+ * V3 breaks down every element to primitives (h1, paragraph, code line objects) for clean Jupyter output.
  */
 
 
