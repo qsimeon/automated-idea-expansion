@@ -49,6 +49,87 @@ const DemoScriptSchema = z.object({
 type CLIAppOutput = z.infer<typeof CLIAppSchema>;
 type DemoScriptOutput = z.infer<typeof DemoScriptSchema>;
 
+/**
+ * VALIDATE FILE COUNT - Ensure generated files match architectural requirements
+ *
+ * Enforces architectural integrity by checking that the number of code files
+ * (excluding README, package.json, etc.) matches the declared architecture.
+ */
+function validateFileCount(files: CodeFile[], plan: CodePlan): void {
+  // Count only actual code files (not README, config, or dependency files)
+  const codeFiles = files.filter(
+    f => !f.path.match(/README\.md|package\.json|requirements\.txt|\.gitignore|Cargo\.toml/i)
+  );
+
+  const codeFileCount = codeFiles.length;
+
+  // Validation rules based on architecture
+  switch (plan.architecture) {
+    case 'modular':
+      if (codeFileCount < 2) {
+        throw new Error(
+          `Modular architecture requires at least 2 code files. Found ${codeFileCount}. ` +
+          `Files: ${files.map(f => f.path).join(', ')}. ` +
+          `Please refactor into separate modules with clear separation of concerns.`
+        );
+      }
+      break;
+
+    case 'full-stack':
+      if (codeFileCount < 5) {
+        throw new Error(
+          `Full-stack architecture requires at least 5 code files (client, server, models, etc.). ` +
+          `Found ${codeFileCount}. Files: ${files.map(f => f.path).join(', ')}. ` +
+          `Please create a proper full-stack structure.`
+        );
+      }
+      break;
+
+    case 'simple':
+      // Simple architecture can be 1 file, no validation needed
+      break;
+  }
+
+  console.log(`  ✅ File count validation passed: ${codeFileCount} code files for ${plan.architecture} architecture`);
+}
+
+/**
+ * SELECT GENERATION MODEL - Route to appropriate model based on complexity
+ *
+ * Strategy:
+ * - Simple/Modular → Claude Sonnet 4.5 (best code quality, fast, $0.15-0.25 per generation)
+ * - Complex → O1 with extended thinking (deep reasoning, $1.50-3.00 per generation)
+ *
+ * This ensures we use expensive O1/O3 models only when complexity truly requires it.
+ */
+function selectGenerationModel(plan: CodePlan): ChatAnthropic | ChatOpenAI {
+  switch (plan.modelTier) {
+    case 'simple':
+    case 'modular':
+      // Use Claude Sonnet 4.5 for most code generation (best quality/cost ratio)
+      return new ChatAnthropic({
+        modelName: 'claude-sonnet-4-5-20250929',
+        temperature: 0.3,
+      });
+
+    case 'complex':
+      // Use O1 for complex architectures requiring deep reasoning
+      console.log(`🧠 Using O1 extended thinking for complex code (score: ${plan.codeComplexityScore}/10)`);
+      return new ChatOpenAI({
+        modelName: 'o1-2024-12-17', // O1 with extended thinking
+        temperature: 1, // O1 only supports temperature 1
+      });
+
+    default:
+      // Fallback to Sonnet if modelTier not recognized
+      console.warn(`⚠️  Unknown modelTier: ${plan.modelTier}, defaulting to Sonnet`);
+      return new ChatAnthropic({
+        modelName: 'claude-sonnet-4-5-20250929',
+        temperature: 0.3,
+      });
+  }
+}
+
 export async function generateCode(
   plan: CodePlan,
   idea: { id: string; title: string; description: string | null }
@@ -91,11 +172,8 @@ async function generateCLIApp(
   plan: CodePlan,
   idea: { title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  // Use Claude Sonnet 4.5 - BEST for code generation
-  const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
-    temperature: 0.3, // Lower temp for more reliable code
-  });
+  // Automatically select model based on complexity tier
+  const model = selectGenerationModel(plan);
 
   // Use structured output (guarantees valid JSON)
   const structuredModel = model.withStructuredOutput(CLIAppSchema);
@@ -151,23 +229,33 @@ OUTPUT STRUCTURE:
     // Generate SHORT, descriptive repo name
     const repoName = await generateRepoName(idea, plan);
 
-    const files: CodeFile[] = [
+    // First create the code files (without README)
+    const codeFiles: CodeFile[] = [
       {
         path: mainFile,
         content: result.code,
         language: plan.language,
       },
+    ];
+
+    // Now generate AI-powered README with full context
+    const readme = await generateReadme({
+      title: idea.title,
+      description: idea.description || '',
+      language: plan.language,
+      plan,
+      files: codeFiles, // Pass the generated code files for context
+      setupInstructions: plan.language === 'python'
+        ? 'pip install ' + (result.requiredPackages || []).join(' ')
+        : 'npm install ' + (result.requiredPackages || []).join(' '),
+      runInstructions: result.usage || `${plan.language === 'python' ? 'python' : 'node'} ${mainFile}`,
+    });
+
+    const files: CodeFile[] = [
+      ...codeFiles,
       {
         path: 'README.md',
-        content: generateReadme({
-          title: idea.title,
-          description: idea.description || '',
-          language: plan.language,
-          setupInstructions: plan.language === 'python'
-            ? '```bash\npip install ' + (result.requiredPackages || []).join(' ') + '\n```'
-            : '```bash\nnpm install ' + (result.requiredPackages || []).join(' ') + '\n```',
-          runInstructions: '```bash\n' + (result.usage || `${plan.language === 'python' ? 'python' : 'node'} ${mainFile}`) + '\n```',
-        }),
+        content: readme,
       },
     ];
 
@@ -199,6 +287,9 @@ OUTPUT STRUCTURE:
         ),
       });
     }
+
+    // Validate file count matches architectural requirements
+    validateFileCount(files, plan);
 
     return {
       code: {
@@ -256,11 +347,8 @@ async function generateDemoScript(
   plan: CodePlan,
   idea: { title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  // Use Claude Sonnet 4.5 for best code quality
-  const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
-    temperature: 0.3,
-  });
+  // Automatically select model based on complexity tier
+  const model = selectGenerationModel(plan);
 
   const fileName = plan.language === 'python' ? 'demo.py' : 'demo.js';
 
@@ -270,11 +358,12 @@ Description: ${idea.description || 'No additional description'}
 
 Requirements:
 - Language: ${plan.language}
-- Keep it focused but FULLY WORKING (50-150 lines)
+- Create fully working code with appropriate complexity for the idea
+- Separate concerns into multiple files when it improves maintainability
+- Include comprehensive error handling and edge case coverage
 - Include clear comments explaining the code
 - Make it RUNNABLE as-is (no missing imports, no errors)
-- Include example usage at the bottom that demonstrates all features
-- Add proper error handling
+- Include example usage that demonstrates all features
 
 CRITICAL: The code MUST:
 1. Actually RUN without errors
@@ -282,7 +371,7 @@ CRITICAL: The code MUST:
 3. Include all necessary imports
 4. Have at least one concrete, working example
 5. Follow ${plan.language} best practices
-6. Be educational but production-quality
+6. Be production-quality with proper error handling
 
 Provide COMPLETE, TESTED-QUALITY code for ${fileName}.
 
@@ -299,25 +388,35 @@ OUTPUT STRUCTURE:
     // Generate SHORT repo name
     const repoName = await generateRepoName(idea, plan);
 
-    const files: CodeFile[] = [
+    // First create the code files (without README)
+    const codeFiles: CodeFile[] = [
       {
         path: fileName,
         content: result.code,
         language: plan.language,
       },
+    ];
+
+    // Now generate AI-powered README with full context
+    const readme = await generateReadme({
+      title: idea.title,
+      description: idea.description || '',
+      language: plan.language,
+      plan,
+      files: codeFiles, // Pass the generated code files for context
+      setupInstructions: result.requiredPackages?.length > 0
+        ? plan.language === 'python'
+          ? 'pip install ' + result.requiredPackages.join(' ')
+          : 'npm install ' + result.requiredPackages.join(' ')
+        : 'No dependencies required',
+      runInstructions: plan.language === 'python' ? `python ${fileName}` : `node ${fileName}`,
+    });
+
+    const files: CodeFile[] = [
+      ...codeFiles,
       {
         path: 'README.md',
-        content: generateReadme({
-          title: idea.title,
-          description: idea.description || '',
-          language: plan.language,
-          setupInstructions: result.requiredPackages?.length > 0
-            ? plan.language === 'python'
-              ? '```bash\npip install ' + result.requiredPackages.join(' ') + '\n```'
-              : '```bash\nnpm install ' + result.requiredPackages.join(' ') + '\n```'
-            : 'No dependencies required',
-          runInstructions: '```bash\n' + (plan.language === 'python' ? `python ${fileName}` : `node ${fileName}`) + '\n```',
-        }),
+        content: readme,
       },
     ];
 
@@ -330,6 +429,9 @@ OUTPUT STRUCTURE:
         });
       }
     }
+
+    // Validate file count matches architectural requirements
+    validateFileCount(files, plan);
 
     return {
       code: {
@@ -357,35 +459,139 @@ OUTPUT STRUCTURE:
 }
 
 /**
- * UTILITY: Generate README content
+ * UTILITY: Generate comprehensive README using AI
+ *
+ * CRITICAL FIX: Previous version used simple string templates, resulting in poor READMEs.
+ * Now uses Claude Sonnet 4.5 to generate professional, detailed documentation.
  */
-function generateReadme(params: {
+async function generateReadme(context: {
   title: string;
   description: string;
   language: string;
+  plan: CodePlan;
+  files: CodeFile[];
   setupInstructions: string;
   runInstructions: string;
-}): string {
-  return `# ${params.title}
+}): Promise<string> {
+  // Use Claude Sonnet 4.5 for best documentation quality
+  const model = new ChatAnthropic({
+    modelName: 'claude-sonnet-4-5-20250929',
+    temperature: 0.4, // Slightly higher for more engaging writing
+  });
 
-${params.description}
+  const filesList = context.files
+    .map(f => `- ${f.path} (${f.content.split('\n').length} lines)`)
+    .join('\n');
+
+  const prompt = `Generate a comprehensive, professional README.md for this project.
+
+## Project Context
+**Title**: ${context.title}
+**Description**: ${context.description}
+**Language**: ${context.language}
+**Architecture**: ${context.plan.architecture}
+**Output Type**: ${context.plan.outputType}
+
+## Implementation Details
+**Implementation Steps**:
+${context.plan.implementationSteps?.map((step, i) => `${i + 1}. ${step}`).join('\n') || 'Not specified'}
+
+**Generated Files**:
+${filesList}
+
+**Setup**: ${context.setupInstructions}
+**Run**: ${context.runInstructions}
+
+## README Requirements
+Your README must be comprehensive and include ALL of the following sections:
+
+1. **Project Title & Description**
+   - Engaging overview of what this project does
+   - Key value proposition in 1-2 sentences
+
+2. **Features**
+   - Bullet list of key capabilities (3-6 features)
+   - Focus on what users can do with this
+
+3. **Architecture Overview**
+   - Explain the file structure and design decisions
+   - Why was this architecture chosen?
+   - How do the components work together?
+
+4. **Installation**
+   - Step-by-step setup instructions
+   - Prerequisites (Python/Node version, etc.)
+   - Include: ${context.setupInstructions}
+
+5. **Usage**
+   - Clear usage examples with code snippets
+   - Include: ${context.runInstructions}
+   - Show at least 2-3 different usage scenarios
+
+6. **File Structure**
+   - Tree diagram or list showing project organization
+   - Brief description of each file's purpose
+
+7. **Technical Details**
+   - Dependencies and their purposes
+   - Key algorithms or patterns used
+   - Any important technical decisions
+
+8. **Examples**
+   - At least 2 concrete usage examples
+   - Show input and expected output
+   - Cover different features or use cases
+
+9. **Troubleshooting**
+   - Common issues and solutions (2-3 items)
+   - How to debug or get help
+
+10. **Footer**
+    - Mention this was AI-generated
+    - Optionally: contributing guidelines, license
+
+## Style Guidelines
+- Use clear, concise language
+- Include code blocks with proper syntax highlighting
+- Use emojis sparingly (only for section headers if desired)
+- Be professional but approachable
+- Make it easy for someone unfamiliar with the project to understand and use it
+
+Generate a complete, well-structured README that would make this project easy to understand and use:`;
+
+  try {
+    const response = await model.invoke(prompt);
+    const readme = response.content.toString();
+    console.log(`  📝 Generated AI README (${readme.length} characters)`);
+    return readme;
+  } catch (error) {
+    console.warn('⚠️  AI README generation failed, using fallback template');
+    // Fallback to simple template if AI generation fails
+    return `# ${context.title}
+
+${context.description}
 
 ## Language
 
-${params.language.charAt(0).toUpperCase() + params.language.slice(1)}
+${context.language.charAt(0).toUpperCase() + context.language.slice(1)}
 
 ## Setup
 
-${params.setupInstructions}
+${context.setupInstructions}
 
 ## Usage
 
-${params.runInstructions}
+${context.runInstructions}
+
+## Files
+
+${filesList}
 
 ## Generated by AI
 
 This project was automatically generated by an AI agent pipeline.
 `;
+  }
 }
 
 /**

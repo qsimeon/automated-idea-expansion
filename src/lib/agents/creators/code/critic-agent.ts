@@ -244,6 +244,16 @@ REVIEW CHECKLIST:
    - Is the file structure logical?
    - Are there code smells (overly complex functions, duplication)?
 
+6. **Documentation Quality** (NEW - HIGH PRIORITY)
+   - README includes architecture overview and design decisions
+   - Multiple concrete usage examples provided (at least 2)
+   - File structure is explained with descriptions
+   - Installation steps are clear and complete
+   - Troubleshooting section exists with common issues
+   - Examples show input and expected output
+   - Technical details explain dependencies and key algorithms
+   - README is comprehensive, not just a template
+
 SCORING GUIDELINES:
 - 90-100: Excellent - Production ready, no issues
 - 80-89: Good - Minor improvements needed
@@ -256,6 +266,7 @@ SCORING METHOD:
 2. Calculate category scores by averaging criteria in each category
 3. Calculate overall score = weighted sum of category scores
 4. If no rubric provided, use general assessment
+5. IMPORTANT: Documentation quality (README) should significantly impact the completeness score
 
 PROVIDE ACTIONABLE FEEDBACK:
 For each issue found, provide:
@@ -269,8 +280,8 @@ EXAMPLE OUTPUT STRUCTURE:
 - categoryScores: { correctness: 90, security: 85, codeQuality: 80, completeness: 85 }
 - hasErrors: true if critical errors found, false otherwise
 - recommendation: "approve" (≥75), "revise" (60-74), or "regenerate" (<60)
-- strengths: ["Clean code structure", "Good error handling"]
-- weaknesses: ["Could use more comments", "Missing edge case handling"]
+- strengths: ["Clean code structure", "Good error handling", "Comprehensive README with examples"]
+- weaknesses: ["Could use more comments", "Missing edge case handling", "README lacks troubleshooting section"]
 - securityConcerns: ["Hardcoded API key on line 15"] or []
 - filePriority: [{ file: "main.py", priority: "high", reason: "Core logic needs validation" }]
 - fixSuggestions: [{

@@ -52,6 +52,10 @@ export interface CodePlan {
   // Complexity level
   architecture: 'simple' | 'modular' | 'full-stack';
 
+  // Model selection for code generation (NEW)
+  modelTier: 'simple' | 'modular' | 'complex'; // Determines which AI model to use
+  codeComplexityScore: number; // 1-10 score (1-3: simple, 4-7: modular, 8-10: complex)
+
   // Explanation of decisions
   reasoning: string;
 

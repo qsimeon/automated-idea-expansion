@@ -4,6 +4,22 @@
 
 @layer base {
   :root {
+    /* Typography - Plus Jakarta Sans font family */
+    --font-sans: var(--font-sans);
+    --font-display: var(--font-sans);
+
+    /* Font sizes (bigger base for better readability) */
+    --text-xs: 0.75rem;    /* 12px */
+    --text-sm: 0.875rem;   /* 14px */
+    --text-base: 1rem;     /* 16px - NEW DEFAULT (was 14px) */
+    --text-lg: 1.125rem;   /* 18px */
+    --text-xl: 1.25rem;    /* 20px */
+    --text-2xl: 1.5rem;    /* 24px */
+    --text-3xl: 1.875rem;  /* 30px */
+    --text-4xl: 2.25rem;   /* 36px */
+    --text-5xl: 3rem;      /* 48px */
+
+    /* Colors (Tailwind HSL format) */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
@@ -53,7 +69,34 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: var(--text-base); /* 16px minimum */
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  h1 {
+    font-size: var(--text-4xl); /* 36px */
+  }
+
+  h2 {
+    font-size: var(--text-3xl); /* 30px */
+  }
+
+  h3 {
+    font-size: var(--text-2xl); /* 24px */
+  }
+
+  h4 {
+    font-size: var(--text-xl); /* 20px */
   }
 }
