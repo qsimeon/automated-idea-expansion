@@ -4,11 +4,9 @@
  * Handles user authentication via GitHub OAuth
  *
  * Why GitHub OAuth?
- * 1. Authenticates users (replaces TEST_USER_ID)
+ * 1. Authenticates users
  * 2. Captures GitHub access_token for publishing code to user's repos
  * 3. Natural fit for developer-focused product
- *
- * Future: Add Twitter/LinkedIn/Mastodon for social posting
  *
  * Setup:
  * 1. Create GitHub OAuth App: https://github.com/settings/developers
@@ -90,8 +88,6 @@ export const authOptions: NextAuthOptions = {
           const { data: newUser, error } = await supabaseAdmin
             .from('users')
             .insert({
-              // Use GitHub login as temporary clerk_user_id (will remove this field later)
-              clerk_user_id: `github_${(profile as any).login || token.email || Date.now()}`,
               email: token.email!,
               name: token.name || (profile as any).login || 'GitHub User',
               timezone: 'UTC',
