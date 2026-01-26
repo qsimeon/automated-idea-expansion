@@ -3,7 +3,7 @@ import type { CodePlan, GeneratedCode, CodeReview, CodeIssue } from './types';
 import { z } from 'zod';
 
 /**
- * CRITIC AGENT (V2 - Structured Outputs)
+ * CRITIC AGENT (Structured Outputs)
  *
  * Purpose: Review generated code for quality, security, and correctness
  *
@@ -13,23 +13,24 @@ import { z } from 'zod';
  * - **Best practices**: Proper error handling, type hints, documentation
  * - **Completeness**: Does it match the plan? Are there missing pieces?
  * - **Code quality**: Naming, structure, readability
+ * - **Documentation**: README quality, examples, troubleshooting
  *
  * Why use a critic agent?
  * - LLMs sometimes generate buggy code
  * - Catching errors before publishing saves time
  * - Improves overall quality
- * - Provides feedback for the fixer agent
+ * - Evaluates code against defined quality rubric
  *
- * V2 Improvements:
+ * Architecture:
  * - Uses Zod schemas with structured outputs (guaranteed valid JSON)
  * - No manual JSON parsing or complex fallback logic needed
  * - Type-safe: schema directly matches CodeReview interface
+ * - 5-dimensional quality scoring (correctness, security, code quality, completeness, documentation)
  *
  * Model choice: GPT-4o-mini
  * - **Cost-effective**: Cheap for review tasks
  * - **Good at review**: Catches common bugs and issues
  * - **Fast**: Low latency
- * - We save the expensive model (Sonnet) for generation where it matters most
  */
 
 // Define schemas for code review
@@ -59,6 +60,7 @@ const CategoryScoresSchema = z.object({
   security: z.number().min(0).max(100).describe('Score for security (0-100)'),
   codeQuality: z.number().min(0).max(100).describe('Score for code quality (0-100)'),
   completeness: z.number().min(0).max(100).describe('Score for completeness (0-100)'),
+  documentation: z.number().min(0).max(100).describe('Score for documentation quality including README (0-100)'),
 });
 
 const CodeReviewSchema = z.object({
@@ -91,14 +93,14 @@ export async function reviewCode(
         issues: [],
         overallScore: 75, // Default passing score
         recommendation: 'approve',
-        categoryScores: { correctness: 75, security: 75, codeQuality: 75, completeness: 75 },
+        categoryScores: { correctness: 75, security: 75, codeQuality: 75, completeness: 75, documentation: 75 },
         strengths: ['Code generated successfully'],
         weaknesses: ['Not reviewed - no API key configured'],
         securityConcerns: [],
         filePriority: [],
         fixSuggestions: [],
       },
-      
+
     };
   }
 
@@ -142,7 +144,7 @@ export async function reviewCode(
         ],
         overallScore: 70,
         recommendation: 'approve', // Proceed despite review failure
-        categoryScores: { correctness: 70, security: 70, codeQuality: 70, completeness: 70 },
+        categoryScores: { correctness: 70, security: 70, codeQuality: 70, completeness: 70, documentation: 70 },
         strengths: [],
         weaknesses: ['Code review failed'],
         securityConcerns: [],
@@ -189,6 +191,9 @@ ${plan.qualityRubric.codeQuality.criteria.map((c) => `  ✓ ${c}`).join('\n')}
 
 **Completeness (${(plan.qualityRubric.completeness.weight * 100).toFixed(0)}%):**
 ${plan.qualityRubric.completeness.criteria.map((c) => `  ✓ ${c}`).join('\n')}
+
+**Documentation (${(plan.qualityRubric.documentation.weight * 100).toFixed(0)}%):**
+${plan.qualityRubric.documentation.criteria.map((c) => `  ✓ ${c}`).join('\n')}
 
 Critical files to focus on: ${plan.criticalFiles?.join(', ') || 'Not specified'}
 `
@@ -264,9 +269,14 @@ SCORING GUIDELINES:
 SCORING METHOD:
 1. Evaluate each criterion in the rubric (0-100 for each)
 2. Calculate category scores by averaging criteria in each category
-3. Calculate overall score = weighted sum of category scores
+3. Calculate overall score = weighted sum of category scores using these weights:
+   - Correctness: 35%
+   - Security: 25%
+   - Code Quality: 20%
+   - Completeness: 10%
+   - Documentation: 10%
 4. If no rubric provided, use general assessment
-5. IMPORTANT: Documentation quality (README) should significantly impact the completeness score
+5. IMPORTANT: Documentation dimension is separate from completeness - evaluate README quality independently
 
 PROVIDE ACTIONABLE FEEDBACK:
 For each issue found, provide:
@@ -277,7 +287,7 @@ For each issue found, provide:
 
 EXAMPLE OUTPUT STRUCTURE:
 - overallScore: 0-100 (weighted average of category scores)
-- categoryScores: { correctness: 90, security: 85, codeQuality: 80, completeness: 85 }
+- categoryScores: { correctness: 90, security: 85, codeQuality: 80, completeness: 85, documentation: 88 }
 - hasErrors: true if critical errors found, false otherwise
 - recommendation: "approve" (≥75), "revise" (60-74), or "regenerate" (<60)
 - strengths: ["Clean code structure", "Good error handling", "Comprehensive README with examples"]

@@ -90,9 +90,10 @@ export const authOptions: NextAuthOptions = {
           const { data: newUser, error } = await supabaseAdmin
             .from('users')
             .insert({
-              clerk_user_id: profile.id?.toString() || `github_${Date.now()}`, // Temp until we remove clerk_user_id
+              // Use GitHub login as temporary clerk_user_id (will remove this field later)
+              clerk_user_id: `github_${(profile as any).login || token.email || Date.now()}`,
               email: token.email!,
-              name: token.name || profile.login || 'GitHub User',
+              name: token.name || (profile as any).login || 'GitHub User',
               timezone: 'UTC',
             })
             .select('id')

@@ -1,11 +1,13 @@
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeFile } from './types';
-import { generateNotebookV3 } from './notebook-generator-v3'; // V3: Atomic schemas
+import { generateNotebook } from './notebook-generator'; // Atomic schemas
+import { ReadmeSchema, type Readme } from './readme-schema';
+import { renderReadmeToMarkdown } from './readme-renderer';
 import { z } from 'zod';
 
 /**
- * GENERATION AGENT (V2 - Structured Outputs)
+ * GENERATION AGENT (Structured Outputs)
  *
  * Purpose: Generate actual code based on the plan
  *
@@ -21,17 +23,17 @@ import { z } from 'zod';
  * - Web App → Generate full project structure with framework
  * - Library → Generate module with exports and documentation
  * - Demo Script → Generate single standalone file
+ * - Notebook → Generate Jupyter notebook with atomic schemas
  *
- * V2 Improvements:
+ * Architecture:
  * - Uses Zod schemas with structured outputs (guaranteed valid JSON)
  * - No manual JSON parsing or cleaning needed
  * - Type-safe generation
+ * - Automatic model selection based on complexity (Sonnet for simple/modular, O1 for complex)
  *
- * Model choice: Claude Sonnet 4.5
- * - BEST at code generation (tops all coding benchmarks)
- * - Superior at creating working, executable code
- * - Excellent understanding of best practices and patterns
- * - Cost: ~$0.015 per code project (worth it for quality)
+ * Model routing:
+ * - Simple/Modular: Claude Sonnet 4.5 (~$0.15-0.25 per project)
+ * - Complex: O1 with extended thinking (~$1.50-3.00 per project)
  */
 
 // Schemas for code generation
@@ -139,7 +141,7 @@ export async function generateCode(
   // Route to specialized generator based on output type
   switch (plan.outputType) {
     case 'notebook':
-      return await generateNotebookV3(plan, idea); // V3: Atomic schemas (h1, paragraph, code lines as primitives)
+      return await generateNotebook(plan, idea); // Atomic schemas (h1, paragraph, code lines as primitives)
     case 'cli-app':
       return await generateCLIApp(plan, idea);
     case 'web-app':
@@ -154,8 +156,8 @@ export async function generateCode(
 }
 
 /**
- * Note: All notebook generation now uses generateNotebookV3() which employs atomic schemas.
- * V3 breaks down every element to primitives (h1, paragraph, code line objects) for clean Jupyter output.
+ * Notebook generation uses atomic schemas that break down every element to primitives
+ * (h1, paragraph, code line objects) for clean, deterministic Jupyter output.
  */
 
 
@@ -239,9 +241,13 @@ OUTPUT STRUCTURE:
     ];
 
     // Now generate AI-powered README with full context
+    // Reconstruct the original idea string from title and description
+    const ideaString = idea.description
+      ? `${idea.title}: ${idea.description}`
+      : idea.title;
+
     const readme = await generateReadme({
-      title: idea.title,
-      description: idea.description || '',
+      ideaString,
       language: plan.language,
       plan,
       files: codeFiles, // Pass the generated code files for context
@@ -398,9 +404,13 @@ OUTPUT STRUCTURE:
     ];
 
     // Now generate AI-powered README with full context
+    // Reconstruct the original idea string from title and description
+    const ideaString = idea.description
+      ? `${idea.title}: ${idea.description}`
+      : idea.title;
+
     const readme = await generateReadme({
-      title: idea.title,
-      description: idea.description || '',
+      ideaString,
       language: plan.language,
       plan,
       files: codeFiles, // Pass the generated code files for context
@@ -459,14 +469,21 @@ OUTPUT STRUCTURE:
 }
 
 /**
- * UTILITY: Generate comprehensive README using AI
+ * UTILITY: Generate comprehensive README using AI with Structured Output
  *
- * CRITICAL FIX: Previous version used simple string templates, resulting in poor READMEs.
- * Now uses Claude Sonnet 4.5 to generate professional, detailed documentation.
+ * SCHEMA-DRIVEN APPROACH:
+ * 1. Claude generates structured Readme object (not markdown string)
+ * 2. Zod validates the structure
+ * 3. renderReadmeToMarkdown() converts to markdown deterministically
+ *
+ * Benefits:
+ * - Guaranteed all sections are present
+ * - Type-safe: cannot miss required fields
+ * - Consistent formatting (renderer controls style)
+ * - Easy to extend or change formatting later
  */
 async function generateReadme(context: {
-  title: string;
-  description: string;
+  ideaString: string; // Raw user input (e.g., "Build a weather app...")
   language: string;
   plan: CodePlan;
   files: CodeFile[];
@@ -476,100 +493,83 @@ async function generateReadme(context: {
   // Use Claude Sonnet 4.5 for best documentation quality
   const model = new ChatAnthropic({
     modelName: 'claude-sonnet-4-5-20250929',
-    temperature: 0.4, // Slightly higher for more engaging writing
+    temperature: 0.3, // Lower for consistency with schema
   });
+
+  // Use structured output to get a Readme object instead of raw string
+  const structuredModel = model.withStructuredOutput(ReadmeSchema);
 
   const filesList = context.files
     .map(f => `- ${f.path} (${f.content.split('\n').length} lines)`)
     .join('\n');
 
-  const prompt = `Generate a comprehensive, professional README.md for this project.
+  const prompt = `You are a technical documentation expert. Generate structured README metadata for this project.
 
-## Project Context
-**Title**: ${context.title}
-**Description**: ${context.description}
+## User's Original Idea
+${context.ideaString}
+
+## Project Analysis
 **Language**: ${context.language}
 **Architecture**: ${context.plan.architecture}
 **Output Type**: ${context.plan.outputType}
 
-## Implementation Details
-**Implementation Steps**:
-${context.plan.implementationSteps?.map((step, i) => `${i + 1}. ${step}`).join('\n') || 'Not specified'}
-
-**Generated Files**:
+## Generated Code Files
 ${filesList}
 
-**Setup**: ${context.setupInstructions}
-**Run**: ${context.runInstructions}
+## Setup & Usage
+- Setup instructions: ${context.setupInstructions}
+- Run instructions: ${context.runInstructions}
+- Implementation approach: ${context.plan.implementationSteps?.join(', ') || 'Not specified'}
 
-## README Requirements
-Your README must be comprehensive and include ALL of the following sections:
+## Task: Generate Complete README Structure
 
-1. **Project Title & Description**
-   - Engaging overview of what this project does
-   - Key value proposition in 1-2 sentences
+Create a professional README with all sections filled in. Make sure:
 
-2. **Features**
-   - Bullet list of key capabilities (3-6 features)
-   - Focus on what users can do with this
+1. **title** - The project name (based on user's idea)
+2. **tagline** - One-line catchphrase (10-100 chars)
+3. **description** - Longer overview explaining the problem it solves (50-500 chars)
+4. **features** - 2-8 key capabilities (each with title and description)
+5. **prerequisites** - Required software (0-5 items, e.g., "Python 3.10+")
+6. **installationSteps** - Step-by-step setup (1-10 steps with explanations)
+7. **usageExamples** - 2-5 concrete code examples showing different features
+8. **architecture** - Overview, ASCII diagram, file descriptions, design decisions
+9. **technicalDetails** - Dependencies, key algorithms/patterns, important notes
+10. **troubleshooting** - 1-5 common issues with causes and solutions
+11. **notes** - Optional footer (mention AI-generated if appropriate)
 
-3. **Architecture Overview**
-   - Explain the file structure and design decisions
-   - Why was this architecture chosen?
-   - How do the components work together?
+All code examples MUST be valid ${context.language}.
+Usage examples MUST have expectedOutput showing what the user will see.
+Installation steps MUST include proper prerequisites.
 
-4. **Installation**
-   - Step-by-step setup instructions
-   - Prerequisites (Python/Node version, etc.)
-   - Include: ${context.setupInstructions}
-
-5. **Usage**
-   - Clear usage examples with code snippets
-   - Include: ${context.runInstructions}
-   - Show at least 2-3 different usage scenarios
-
-6. **File Structure**
-   - Tree diagram or list showing project organization
-   - Brief description of each file's purpose
-
-7. **Technical Details**
-   - Dependencies and their purposes
-   - Key algorithms or patterns used
-   - Any important technical decisions
-
-8. **Examples**
-   - At least 2 concrete usage examples
-   - Show input and expected output
-   - Cover different features or use cases
-
-9. **Troubleshooting**
-   - Common issues and solutions (2-3 items)
-   - How to debug or get help
-
-10. **Footer**
-    - Mention this was AI-generated
-    - Optionally: contributing guidelines, license
-
-## Style Guidelines
-- Use clear, concise language
-- Include code blocks with proper syntax highlighting
-- Use emojis sparingly (only for section headers if desired)
-- Be professional but approachable
-- Make it easy for someone unfamiliar with the project to understand and use it
-
-Generate a complete, well-structured README that would make this project easy to understand and use:`;
+Generate now:`;
 
   try {
-    const response = await model.invoke(prompt);
-    const readme = response.content.toString();
-    console.log(`  📝 Generated AI README (${readme.length} characters)`);
-    return readme;
-  } catch (error) {
-    console.warn('⚠️  AI README generation failed, using fallback template');
-    // Fallback to simple template if AI generation fails
-    return `# ${context.title}
+    // Get structured Readme object from Claude
+    const readmeData = await structuredModel.invoke(prompt);
 
-${context.description}
+    console.log(`  ✅ Generated structured README`);
+    console.log(`     - Features: ${readmeData.features.length}`);
+    console.log(`     - Installation steps: ${readmeData.installationSteps.length}`);
+    console.log(`     - Usage examples: ${readmeData.usageExamples.length}`);
+    console.log(`     - Troubleshooting: ${readmeData.troubleshooting.length}`);
+
+    // Render structured data to markdown deterministically
+    const markdown = renderReadmeToMarkdown(readmeData);
+
+    console.log(`  📝 Rendered to markdown (${markdown.length} characters)`);
+    return markdown;
+  } catch (error) {
+    console.error('❌ README generation failed:', error);
+
+    // Fallback: Create minimal README from available data
+    console.warn('⚠️  Using minimal fallback README');
+
+    // Extract title from ideaString (first line before colon)
+    const titleFromIdea = context.ideaString.split(':')[0] || 'Project';
+
+    return `# ${titleFromIdea}
+
+${context.ideaString}
 
 ## Language
 
@@ -589,7 +589,7 @@ ${filesList}
 
 ## Generated by AI
 
-This project was automatically generated by an AI agent pipeline.
+This project was automatically generated from an AI agent pipeline.
 `;
   }
 }

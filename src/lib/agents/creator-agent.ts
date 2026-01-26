@@ -1,7 +1,7 @@
 import type { AgentStateType } from './types';
 import type { Logger } from '../logging/logger';
 import { createBlog } from './creators/blog/blog-creator'; // Cell-based with images and social share
-import { createCodeProjectV2 } from './creators/code/code-creator-v2'; // Multi-stage code creator
+import { createCodeProject } from './creators/code/code-creator'; // Multi-stage code creator
 import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publisher';
 
 /**
@@ -75,8 +75,8 @@ export async function creatorAgent(
         };
 
       case 'github_repo':
-        logger.info('Delegating to code creator (V2) - multi-stage pipeline');
-        const codeResult = await createCodeProjectV2(selectedIdea);
+        logger.info('Delegating to code creator - multi-stage pipeline');
+        const codeResult = await createCodeProject(selectedIdea);
         logger.info('Code creator completed successfully', {
           hasContent: !!codeResult.content,
         });

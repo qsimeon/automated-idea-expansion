@@ -3,7 +3,7 @@ import type { CodePlan } from './types';
 import { z } from 'zod';
 
 /**
- * PLANNING AGENT (V2 - Structured Outputs)
+ * PLANNING AGENT (Structured Outputs)
  *
  * Purpose: Analyze an idea and create an implementation plan
  *
@@ -12,20 +12,23 @@ import { z } from 'zod';
  * - Which language? (Python for data/ML, JS/TS for web, etc.)
  * - How complex? (simple script vs full application)
  * - Which framework? (if applicable)
+ * - What model tier for generation? (Sonnet for simple/modular, O1 for complex)
  *
  * Why separate planning from generation?
  * - Planning requires different thinking than coding
  * - Makes the generation agent more focused
  * - Allows us to validate the plan before generating
- * - Easier to add human-in-the-loop approval later
+ * - Enables intelligent model routing based on complexity
  *
- * V2 Improvements:
+ * Architecture:
  * - Uses Zod schemas with structured outputs (guaranteed valid JSON)
  * - No manual JSON parsing or error handling needed
  * - Type-safe: schema directly matches CodePlan interface
+ * - Calculates complexity score (1-10) to determine model tier
+ * - Defines 5-dimensional quality rubric (correctness, security, code quality, completeness, documentation)
  *
  * Model choice: GPT-5 Nano
- * - Cheap and fast
+ * - Cheap and fast (best cost/speed for planning)
  * - Good at structured reasoning and decision-making
  * - Note: Only supports default temperature (1)
  */
@@ -37,10 +40,11 @@ const QualityDimensionSchema = z.object({
 });
 
 const QualityRubricSchema = z.object({
-  correctness: QualityDimensionSchema.describe('Functional correctness criteria (typically 40% weight)'),
-  security: QualityDimensionSchema.describe('Security criteria (typically 30% weight)'),
+  correctness: QualityDimensionSchema.describe('Functional correctness criteria (typically 35% weight)'),
+  security: QualityDimensionSchema.describe('Security criteria (typically 25% weight)'),
   codeQuality: QualityDimensionSchema.describe('Code quality criteria (typically 20% weight)'),
   completeness: QualityDimensionSchema.describe('Completeness criteria (typically 10% weight)'),
+  documentation: QualityDimensionSchema.describe('Documentation quality criteria including README (typically 10% weight)'),
 });
 
 // Define the main planning schema

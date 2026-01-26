@@ -1,21 +1,32 @@
 import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeFile } from './types';
 import { z } from 'zod';
+import { ReadmeSchema, type Readme } from './readme-schema';
+import { renderReadmeToMarkdown } from './readme-renderer';
+
+// Schema for generating multiple Python files
+const ModuleFileSchema = z.object({
+  path: z.string().describe('File path (e.g., "rnn_energy/core.py")'),
+  content: z.string().describe('Complete, working Python code for this file'),
+});
+
+const MultipleFilesSchema = z.object({
+  files: z.array(ModuleFileSchema).describe('List of Python files to create'),
+});
 
 /**
- * NOTEBOOK GENERATOR V3 (Atomic Schema Implementation)
+ * NOTEBOOK GENERATOR (Atomic Schema Implementation)
  *
- * Complete rewrite using deeply nested, atomic schemas following the
- * "schemas all the way down" philosophy.
+ * Uses deeply nested, atomic schemas following the "schemas all the way down" philosophy.
  *
- * Key improvements over V2:
+ * Architecture:
  * 1. **Atomic Markdown Blocks**: Headers, paragraphs, lists as structured objects
  * 2. **Atomic Code Lines**: Each line is a structured object
  * 3. **No Ambiguity**: LLM cannot dump mixed content
  * 4. **Self-Documenting**: Schema IS the specification
  *
  * References:
- * - Design doc: NOTEBOOK_SCHEMA_DESIGN.md
  * - Jupyter nbformat: https://nbformat.readthedocs.io/en/latest/format_description.html
  */
 
@@ -91,19 +102,49 @@ type CodeCell = z.infer<typeof CodeCellSchema>;
 type MarkdownBlock = z.infer<typeof MarkdownBlockSchema>;
 
 /**
+ * SELECT GENERATION MODEL - Route to appropriate model based on complexity
+ *
+ * Strategy:
+ * - Simple/Modular → Claude Sonnet 4.5 (best code quality, fast)
+ * - Complex → O1 with extended thinking (deep reasoning for hard problems)
+ */
+function selectGenerationModel(plan: CodePlan): ChatAnthropic | ChatOpenAI {
+  switch (plan.modelTier) {
+    case 'simple':
+    case 'modular':
+      console.log(`  📊 Using Claude Sonnet 4.5 for ${plan.modelTier} notebook (complexity: ${plan.codeComplexityScore}/10)`);
+      return new ChatAnthropic({
+        modelName: 'claude-sonnet-4-5-20250929',
+        temperature: 0.3,
+      });
+
+    case 'complex':
+      console.log(`  🧠 Using O1 extended thinking for complex notebook (complexity: ${plan.codeComplexityScore}/10)`);
+      return new ChatOpenAI({
+        modelName: 'o1-2024-12-17',
+        temperature: 1, // O1 only supports temperature 1
+      });
+
+    default:
+      console.warn(`  ⚠️  Unknown modelTier: ${plan.modelTier}, defaulting to Sonnet`);
+      return new ChatAnthropic({
+        modelName: 'claude-sonnet-4-5-20250929',
+        temperature: 0.3,
+      });
+  }
+}
+
+/**
  * Generate a Jupyter notebook using atomic structured outputs
  */
-export async function generateNotebookV3(
+export async function generateNotebook(
   plan: CodePlan,
   idea: { title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  console.log('📓 Generating notebook with atomic schemas (V3)...');
+  console.log('📓 Generating notebook with atomic schemas...');
 
-  // Use Claude Sonnet 4.5 with structured outputs
-  const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
-    temperature: 0.3,
-  });
+  // Use model selection based on complexity
+  const model = selectGenerationModel(plan);
 
   // Use structured output with atomic schema
   const structuredModel = model.withStructuredOutput(NotebookGenerationSchema);
@@ -133,6 +174,14 @@ export async function generateNotebookV3(
       // Generate short repo name
       const repoName = generateRepoName(idea);
 
+      // Generate AI-powered README with schema-driven approach
+      const readmeContent = await generateReadme({
+        idea,
+        plan,
+        packages: result.requiredPackages,
+        notebookCellCount: result.cells.length,
+      });
+
       const files: CodeFile[] = [
         {
           path: 'notebook.ipynb',
@@ -141,7 +190,7 @@ export async function generateNotebookV3(
         },
         {
           path: 'README.md',
-          content: generateReadme(idea, result.requiredPackages),
+          content: readmeContent,
         },
       ];
 
@@ -151,6 +200,26 @@ export async function generateNotebookV3(
           path: 'requirements.txt',
           content: result.requiredPackages.join('\n'),
         });
+      }
+
+      // Generate critical Python module files from the plan
+      if (plan.criticalFiles && plan.criticalFiles.length > 0) {
+        const pythonModuleFiles = plan.criticalFiles.filter(f =>
+          f.endsWith('.py') && !f.endsWith('.ipynb')
+        );
+
+        if (pythonModuleFiles.length > 0) {
+          console.log(`   📁 Generating ${pythonModuleFiles.length} critical Python module(s)...`);
+          const generatedModules = await generateCriticalModules(
+            idea,
+            plan,
+            pythonModuleFiles,
+            result.requiredPackages,
+            result.cells
+          );
+          files.push(...generatedModules);
+          console.log(`   ✅ Generated ${generatedModules.length} module file(s)`);
+        }
       }
 
       return {
@@ -385,18 +454,191 @@ function generateRepoName(idea: { title: string; description: string | null }): 
 /**
  * Generate README for notebook
  */
-function generateReadme(
+/**
+ * GENERATE CRITICAL PYTHON MODULES
+ *
+ * Task 2.2: Multi-File Architecture Enforcement
+ *
+ * The plan specifies critical Python module files that should be generated.
+ * This function generates them using schema-driven structured output.
+ *
+ * Ensures that planned file structure is actually created.
+ */
+async function generateCriticalModules(
+  idea: { title: string; description: string | null },
+  plan: CodePlan,
+  filePathsToCreate: string[],
+  requiredPackages: string[],
+  notebookCells: any[]
+): Promise<CodeFile[]> {
+  try {
+    const model = new ChatAnthropic({
+      modelName: 'claude-sonnet-4-5-20250929',
+      temperature: 0.3,
+    });
+
+    const structuredModel = model.withStructuredOutput(MultipleFilesSchema);
+
+    const cellSummary = notebookCells
+      .filter((c: any) => c.cellType === 'code')
+      .slice(0, 3)
+      .map((c: any) => c.lines.map((l: any) => l.code).join('\n').substring(0, 100))
+      .join('\n');
+
+    const prompt = `Generate the following Python module files for this project:
+Project: "${idea.title}"
+${idea.description ? `Description: ${idea.description}` : ''}
+
+Files to create:
+${filePathsToCreate.map(f => `- ${f}`).join('\n')}
+
+These modules should:
+1. Work together as a cohesive system
+2. Be importable from each other
+3. Implement the algorithms shown in the notebook cells:
+
+${cellSummary}
+
+Generate COMPLETE, working code for each file. Each file should:
+- Have proper imports
+- Include docstrings
+- Be production-ready
+- Work with these dependencies: ${requiredPackages.join(', ') || 'numpy, scipy'}
+
+Return the files as JSON with this structure:
+{
+  "files": [
+    { "path": "rnn_energy/core.py", "content": "..." },
+    { "path": "rnn_energy/solver.py", "content": "..." },
+    ...
+  ]
+}`;
+
+    const result = await structuredModel.invoke(prompt);
+
+    // Convert to CodeFile format
+    const codeFiles: CodeFile[] = result.files.map(f => ({
+      path: f.path,
+      content: f.content,
+      language: 'python',
+    }));
+
+    return codeFiles;
+  } catch (error) {
+    console.error('⚠️  Failed to generate critical modules:', error instanceof Error ? error.message : error);
+    return []; // Return empty array - the notebook is still valid without modules
+  }
+}
+
+/**
+ * SCHEMA-DRIVEN README GENERATION FOR NOTEBOOKS
+ *
+ * Instead of using a template string, generate a structured README object
+ * that is validated by Zod and rendered deterministically.
+ *
+ * This ensures:
+ * - All sections are present
+ * - Quality is consistent
+ * - Format is professional
+ * - Can be extended easily
+ */
+async function generateReadme(context: {
+  idea: { title: string; description: string | null };
+  plan: CodePlan;
+  packages: string[];
+  notebookCellCount: number;
+}): Promise<string> {
+  // Use Claude Sonnet 4.5 for README generation
+  const model = new ChatAnthropic({
+    modelName: 'claude-sonnet-4-5-20250929',
+    temperature: 0.3,
+  });
+
+  // Use structured output with README schema
+  const structuredModel = model.withStructuredOutput(ReadmeSchema);
+
+  // Build context for the prompt
+  const setupInstructions = context.packages.length > 0
+    ? `pip install ${context.packages.join(' ')}`
+    : 'No setup required';
+
+  const runInstructions = 'jupyter lab notebook.ipynb (or upload to Google Colab)';
+
+  const prompt = `Generate a comprehensive README.md for this Jupyter notebook project.
+
+PROJECT DETAILS:
+Title: ${context.idea.title}
+Description: ${context.idea.description || 'N/A'}
+Language: Python
+Type: Jupyter Notebook
+Cells: ${context.notebookCellCount}
+Dependencies: ${context.packages.length > 0 ? context.packages.join(', ') : 'None'}
+
+SETUP INSTRUCTIONS:
+${setupInstructions}
+
+RUN INSTRUCTIONS:
+${runInstructions}
+
+YOUR TASK:
+Generate a professional README that includes:
+1. A compelling title and one-liner tagline
+2. A clear description explaining what the notebook does
+3. 2-4 key features/capabilities the notebook demonstrates
+4. Setup prerequisites if any
+5. Clear installation steps (${setupInstructions})
+6. 2-3 usage examples showing how to run the notebook
+7. Architecture/structure overview explaining the notebook flow
+8. Technical details about dependencies and key concepts
+9. Troubleshooting section for common issues
+10. Optional notes about how it was generated
+
+Make the README engaging and educational - this is a learning tool!
+Focus on making the project understandable to someone new to the topic.`;
+
+  try {
+    const readme = await structuredModel.invoke(prompt);
+
+    // Validate the structure (Zod will throw if invalid)
+    console.log(`  📖 README schema validated`);
+    console.log(`     - Features: ${readme.features.length}`);
+    console.log(`     - Installation steps: ${readme.installationSteps.length}`);
+    console.log(`     - Usage examples: ${readme.usageExamples.length}`);
+    console.log(`     - Troubleshooting items: ${readme.troubleshooting.length}`);
+
+    // Render to markdown
+    return renderReadmeToMarkdown(readme);
+  } catch (error) {
+    // Log detailed error for debugging
+    console.error('⚠️  README schema validation failed');
+    if (error instanceof Error) {
+      console.error(`   Error: ${error.message}`);
+      if (error.message.includes('OUTPUT_PARSING_FAILURE')) {
+        console.error('   Reason: Claude returned incomplete or malformed JSON');
+        console.error('   Falling back to template-based README');
+      }
+    }
+    // Fallback to simple template if schema generation fails
+    return generateReadmeFallback(context.idea, context.packages);
+  }
+}
+
+/**
+ * FALLBACK: Simple template-based README if AI generation fails
+ * This ensures we always have a README, even if the advanced generation breaks
+ */
+function generateReadmeFallback(
   idea: { title: string; description: string | null },
   packages: string[]
 ): string {
   return `# ${idea.title}
 
-${idea.description || ''}
+${idea.description || 'A Jupyter notebook for data analysis and experimentation.'}
 
 ## Setup
 
 \`\`\`bash
-pip install ${packages.join(' ')}
+pip install ${packages.length > 0 ? packages.join(' ') : 'jupyter'}
 \`\`\`
 
 ## Usage
@@ -411,11 +653,10 @@ Or upload to [Google Colab](https://colab.research.google.com/).
 
 ## Requirements
 
-${packages.map((pkg) => `- ${pkg}`).join('\n')}
+${packages.length > 0 ? packages.map((pkg) => `- ${pkg}`).join('\n') : '- jupyter'}
 
-## Generated by AI
+## Notes
 
 This notebook was automatically generated using Claude Sonnet 4.5 with atomic structured outputs.
-Follows the "schemas all the way down" philosophy for maximum quality and structure.
 `;
 }

@@ -8,16 +8,16 @@
 /**
  * QUALITY RUBRIC - Evaluation criteria for code quality
  *
- * Defines specific, measurable criteria across four dimensions.
+ * Defines specific, measurable criteria across five dimensions.
  * Used by critic agent for consistent evaluation.
  */
 export interface QualityRubric {
   correctness: {
-    weight: number; // e.g., 0.4 (40% of total score)
+    weight: number; // e.g., 0.35 (35% of total score)
     criteria: string[]; // e.g., ["All functions have error handling", "Input validation implemented"]
   };
   security: {
-    weight: number; // e.g., 0.3 (30% of total score)
+    weight: number; // e.g., 0.25 (25% of total score)
     criteria: string[]; // e.g., ["No hardcoded secrets", "Input sanitization for user data"]
   };
   codeQuality: {
@@ -26,7 +26,11 @@ export interface QualityRubric {
   };
   completeness: {
     weight: number; // e.g., 0.1 (10% of total score)
-    criteria: string[]; // e.g., ["README with setup instructions", "Example usage included"]
+    criteria: string[]; // e.g., ["All planned features implemented", "No TODO comments"]
+  };
+  documentation: {
+    weight: number; // e.g., 0.1 (10% of total score) - NEW
+    criteria: string[]; // e.g., ["README includes architecture", "Multiple usage examples", "File structure explained"]
   };
 }
 
@@ -147,6 +151,7 @@ export interface CodeReview {
     security: number;
     codeQuality: number;
     completeness: number;
+    documentation: number; // NEW: README and code documentation quality
   };
 
   // Files prioritized for fixing

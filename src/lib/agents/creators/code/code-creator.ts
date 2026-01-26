@@ -31,15 +31,15 @@ import type { GeneratedCode, CodeCreationState } from './types';
  * but we can upgrade to that if we need more complex orchestration.
  */
 
-export async function createCodeProjectV2(idea: {
+export async function createCodeProject(idea: {
   id: string;
   title: string;
   description: string | null;
 }): Promise<{
   content: any; // Will be transformed to match existing format
-  
+
 }> {
-  console.log('\n🚀 === MULTI-STAGE CODE CREATOR V2 ===');
+  console.log('\n🚀 === CODE CREATOR (Multi-Stage Pipeline) ===');
   console.log(`   Idea: "${idea.title}"\n`);
 
   const state: CodeCreationState = {
@@ -83,6 +83,12 @@ export async function createCodeProjectV2(idea: {
     state.review = reviewResult.review;
 
     console.log(`   📊 Quality Score: ${state.review.overallScore}/100`);
+
+    // Log category scores (5-dimensional rubric)
+    if (state.review.categoryScores) {
+      console.log(`   📈 Category scores: C:${state.review.categoryScores.correctness} S:${state.review.categoryScores.security} Q:${state.review.categoryScores.codeQuality} Comp:${state.review.categoryScores.completeness} D:${state.review.categoryScores.documentation}`);
+    }
+
     console.log(`   🐛 Issues: ${state.review.issues.length}`);
     console.log(`   ✅ Recommendation: ${state.review.recommendation}`);
 
@@ -179,7 +185,7 @@ export async function createCodeProjectV2(idea: {
     }
 
     console.log(`\n📊 === ITERATION SUMMARY ===`);
-    console.log(`   Attempts: ${state.attempts}`);
+    console.log(`   Regeneration/Fix Attempts: ${state.attempts}`);
     console.log(`   Final Score: ${state.review.overallScore}/100\n`);
 
     // FINAL: Transform to expected format

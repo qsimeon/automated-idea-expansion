@@ -7,7 +7,7 @@ An AI-powered system that transforms quick ideas into polished content:
 - **Code Projects**: Working GitHub repositories with tests and documentation
 
 **Last Updated:** January 22, 2026
-**Current Version:** V3 (Cell-Based Architecture)
+**Current Version:** Cell-Based Architecture
 
 ---
 
@@ -26,7 +26,7 @@ An AI-powered system that transforms quick ideas into polished content:
 ┌──────────────────────────────────────────────────────────┐
 │              USER SELECTS IDEA TO EXPAND                 │
 │                  (Click "Expand" button)                 │
-│                                                           │
+│                                                          │
 │  Sends POST /api/expand with:                            │
 │  { "ideaId": "..." }                                     │
 └───────────────────────┬──────────────────────────────────┘
@@ -35,7 +35,7 @@ An AI-powered system that transforms quick ideas into polished content:
 ┌──────────────────────────────────────────────────────────┐
 │              API ENDPOINT: /api/expand                   │
 │            (src/app/api/expand/route.ts)                 │
-│                                                           │
+│                                                          │
 │  1. Validates ideaId (required)                          │
 │  2. Fetches idea from Supabase                           │
 │  3. Creates execution record                             │
@@ -46,10 +46,10 @@ An AI-powered system that transforms quick ideas into polished content:
 ┌──────────────────────────────────────────────────────────┐
 │             LANGGRAPH ORCHESTRATOR                       │
 │              (src/lib/agents/graph.ts)                   │
-│                                                           │
+│                                                          │
 │  Stateful graph with 2 sequential nodes:                 │
 │  START → Router → Creator → END                          │
-│                                                           │
+│                                                          │
 │  State contains:                                         │
 │  - userId                                                │
 │  - selectedIdea (passed from API)                        │
@@ -62,19 +62,19 @@ An AI-powered system that transforms quick ideas into polished content:
 ┌──────────────────────────────────────────────────────────┐
 │                  ROUTER AGENT                            │
 │              (src/lib/agents/router-agent.ts)            │
-│                                                           │
+│                                                          │
 │  Purpose: Decide best output format for idea             │
-│                                                           │
+│                                                          │
 │  Input: selectedIdea                                     │
 │  Output: chosenFormat ('blog_post' | 'github_repo')      │
-│                                                           │
+│                                                          │
 │  Decision Criteria:                                      │
 │  - Written explanation → blog_post                       │
 │  - Hands-on code demo → github_repo                      │
 │  - Educational content → blog_post                       │
 │  - Technical implementation → github_repo                │
-│                                                           │
-│  Model: GPT-4o-mini (fast routing, T=0.5)               │
+│                                                          │
+│  Model: GPT-4o-mini (fast routing, T=0.5)                │
 │  Uses: Structured output with Zod schema                 │
 └───────────────────────┬──────────────────────────────────┘
                         │
@@ -82,17 +82,16 @@ An AI-powered system that transforms quick ideas into polished content:
 ┌──────────────────────────────────────────────────────────┐
 │                  CREATOR AGENT                           │
 │            (src/lib/agents/creator-agent.ts)             │
-│                                                           │
+│                                                          │
 │  Routes to appropriate creator based on format:          │
-│  - blog_post   → Blog Creator V3 (cell-based)            │
-│  - github_repo → Code Creator V2 (multi-stage)           │
+│  - blog_post   → Blog Creator (cell-based)               │
+│  - github_repo → Code Creator (multi-stage)              │
 └───────────────────────┬──────────────────────────────────┘
                         │
            ┌────────────┴────────────┐
            ▼                         ▼
   ┌─────────────────┐       ┌─────────────────┐
-  │  BLOG CREATOR   │       │  CODE CREATOR   │
-  │      (V3)       │       │      (V2)       │
+  │  BLOG CREATOR   │       │  CODE CREATOR   │               
   └─────────────────┘       └─────────────────┘
            │                         │
            ▼                         ▼
@@ -120,14 +119,14 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 1: PLANNING                                       │
 │  Model: GPT-5 Nano (T=1.0, only supported temp)          │
-│                                                           │
+│                                                          │
 │  Decisions:                                              │
 │  - Title (can refine original)                           │
 │  - 3-5 main sections                                     │
 │  - Tone (educational/casual/technical)                   │
 │  - Target word count (1000-2000)                         │
 │  - Images (0-3 with placement/concept/style)             │
-│                                                           │
+│                                                          │
 │  Output: BlogPlan (validated with Zod)                   │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -135,35 +134,35 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 2: CELL-BASED GENERATION                          │
 │  Model: Claude Sonnet 4.5 (T=0.8, best writing)          │
-│                                                           │
+│                                                          │
 │  Generates Array<BlogCell> where each cell is:           │
-│                                                           │
+│                                                          │
 │  1. MarkdownCell:                                        │
-│     {                                                     │
+│     {                                                    │
 │       cellType: "markdown",                              │
 │       blocks: [                                          │
 │         { blockType: "h2", text: "..." },                │
 │         { blockType: "paragraph", text: "..." },         │
 │         { blockType: "bulletList", items: [...] },       │
 │         { blockType: "codeBlock", language, lines }      │
-│       ]                                                   │
-│     }                                                     │
-│                                                           │
+│       ]                                                  │
+│     }                                                    │
+│                                                          │
 │  2. ImageCell:                                           │
-│     {                                                     │
+│     {                                                    │
 │       cellType: "image",                                 │
 │       imageUrl: "[PLACEHOLDER-1]",                       │
 │       caption: "Detailed description",                   │
 │       placement: "featured" | "inline" | "end"           │
-│     }                                                     │
-│                                                           │
+│     }                                                    │
+│                                                          │
 │  Also generates: SocialPost                              │
-│     {                                                     │
+│     {                                                    │
 │       content: "Tweet ending with [BLOG_URL]",           │
 │       hashtags: ["tag1", "tag2"],                        │
 │       includeImage: true/false                           │
-│     }                                                     │
-│                                                           │
+│     }                                                    │
+│                                                          │
 │  Output: BlogGeneration (title + cells + socialPost)     │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -171,17 +170,17 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 3: IMAGE GENERATION                               │
 │  Service: fal.ai FLUX Schnell (fast, high quality)       │
-│                                                           │
+│                                                          │
 │  For each ImageCell with [PLACEHOLDER-N]:                │
 │  1. Generate image using caption + imageSpec             │
 │  2. Replace placeholder with actual URL                  │
 │  3. If generation fails, mark as empty (skip in UI)      │
-│                                                           │
+│                                                          │
 │  Features:                                               │
 │  - Parallel generation (where possible)                  │
-│  - Fallback to Hugging Face/Replicate if fal.ai fails   │
+│  - Fallback to Hugging Face/Replicate if fal.ai fails    │
 │  - Caption optimization with GPT-4o-mini                 │
-│                                                           │
+│                                                          │
 │  Output: Updated cells with real image URLs              │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -189,14 +188,14 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 3.5: SOCIAL MEDIA IMAGE (Optional)                │
 │  Triggered if: socialPost.includeImage === true          │
-│                                                           │
+│                                                          │
 │  Strategy:                                               │
 │  1. If blog has images → Reuse first blog image          │
 │  2. Otherwise → Generate dedicated social image          │
 │     - Concept: blog title                                │
 │     - Style: "eye-catching, social media optimized"      │
 │     - Aspect ratio: 16:9 (Twitter/X optimized)           │
-│                                                           │
+│                                                          │
 │  Output: socialImage { imageUrl, caption }               │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -204,28 +203,28 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 4: REVIEW                                         │
 │  Model: GPT-4o-mini (T=0.5, fast evaluation)             │
-│                                                           │
+│                                                          │
 │  Evaluates:                                              │
 │  - Clarity (0-100): Clear structure and writing?         │
 │  - Accuracy (0-100): Technically correct?                │
 │  - Engagement (0-100): Engaging and well-written?        │
 │  - Structure (0-100): Good use of cells and blocks?      │
-│                                                           │
+│                                                          │
 │  Overall Score = Average of category scores              │
-│                                                           │
+│                                                          │
 │  Recommendation:                                         │
 │  - "approve"     if score ≥ 75                           │
 │  - "revise"      if score 60-74                          │
 │  - "regenerate"  if score < 60                           │
-│                                                           │
+│                                                          │
 │  Output: BlogReview (scores + recommendation)            │
 └──────────────────────────────────────────────────────────┘
                          │
                          ▼
 ┌──────────────────────────────────────────────────────────┐
 │  FINAL OUTPUT                                            │
-│                                                           │
-│  {                                                        │
+│                                                          │
+│  {                                                       │
 │    title: string,                                        │
 │    cells: Array<MarkdownCell | ImageCell>,               │
 │    markdown: string,  // For backward compatibility      │
@@ -238,10 +237,10 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 │      platform: "twitter",                                │
 │      imageUrl?: string,   // If includeImage=true        │
 │      imageCaption?: string                               │
-│    },                                                     │
+│    },                                                    │
 │    _reviewScore: number,                                 │
 │    _sections: string[]                                   │
-│  }                                                        │
+│  }                                                       │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -298,20 +297,20 @@ cells[2].blocks[0].text = "Updated heading";
 ## 💻 Code Creator V2 - Multi-Stage Pipeline
 
 ```
-                    CODE CREATOR V2
-                  (code-creator-v2.ts)
+                    CODE CREATOR
+                  (code-creator.ts)
 
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 1: PLANNING                                       │
 │  Model: GPT-4o-mini (T=0.7)                              │
-│                                                           │
+│                                                          │
 │  Decisions:                                              │
 │  - Output type (notebook/CLI/webapp/library)             │
 │  - Language (Python/Node.js/TypeScript)                  │
 │  - Architecture (file structure)                         │
 │  - Dependencies                                          │
 │  - Quality rubric                                        │
-│                                                           │
+│                                                          │
 │  Output: CodePlan                                        │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -319,13 +318,13 @@ cells[2].blocks[0].text = "Updated heading";
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 2: GENERATION                                     │
 │  Model: Claude Sonnet 4.5 (T=0.7, best code quality)     │
-│                                                           │
+│                                                          │
 │  Generates:                                              │
 │  - All code files (based on plan)                        │
 │  - README with setup instructions                        │
 │  - package.json / requirements.txt                       │
 │  - Tests (if applicable)                                 │
-│                                                           │
+│                                                          │
 │  Output: CodeDraft (files, dependencies, instructions)   │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -333,20 +332,20 @@ cells[2].blocks[0].text = "Updated heading";
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 3: REVIEW                                         │
 │  Model: GPT-4o-mini (T=0.5)                              │
-│                                                           │
+│                                                          │
 │  Evaluates:                                              │
 │  - Correctness (40%): Logic, syntax, completeness        │
 │  - Security (30%): No vulnerabilities, safe patterns     │
 │  - Code Quality (20%): Style, naming, structure          │
 │  - Completeness (10%): README, tests, docs               │
-│                                                           │
+│                                                          │
 │  Overall Score = Weighted average                        │
-│                                                           │
+│                                                          │
 │  Recommendation:                                         │
 │  - "approve"     if score ≥ 75                           │
 │  - "fix"         if score 60-74 (targeted fixes)         │
 │  - "regenerate"  if score < 60 (start over)              │
-│                                                           │
+│                                                          │
 │  Output: CodeReview                                      │
 └──────────────────────────────────────────────────────────┘
                          │
@@ -375,17 +374,17 @@ cells[2].blocks[0].text = "Updated heading";
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 5: GITHUB PUBLISH                                 │
 │  Service: GitHub API via octokit                         │
-│                                                           │
-│  Steps:                                                   │
+│                                                          │
+│  Steps:                                                  │
 │  1. Create repository (private by default)               │
 │  2. Upload all files via GitHub API                      │
 │  3. Create initial commit                                │
 │  4. Return repository URL                                │
-│                                                           │
-│  Modes:                                                   │
+│                                                          │
+│  Modes:                                                  │
 │  - LIVE: Publish to github.com/username/repo             │
 │  - DRY_RUN: Simulate (no actual creation)                │
-│                                                           │
+│                                                          │
 │  Output: { repoUrl, publishedAt, metadata }              │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -455,10 +454,10 @@ src/
 │   │   ├── types.ts                  # Agent state types
 │   │   └── creators/
 │   │       ├── blog/
-│   │       │   ├── blog-creator.ts   # V3 cell-based creator
+│   │       │   ├── blog-creator.ts   # Cell-based creator
 │   │       │   └── blog-schemas.ts   # Zod schemas for cells
 │   │       ├── code/
-│   │       │   └── code-creator-v2.ts # Multi-stage code creator
+│   │       │   └── code-creator.ts # Multi-stage code creator
 │   │       └── image-creator.ts      # Image generation service
 │   │
 │   ├── db/
@@ -497,7 +496,7 @@ src/
 - SocialPost schema
 - Utility functions (renderBlogToMarkdown, calculateWordCount)
 
-**code-creator-v2.ts**: Multi-stage code generator
+**code-creator.ts**: Multi-stage code generator
 - 5-stage pipeline with iteration
 - Generates complete GitHub repositories
 - Quality-driven refinement loop

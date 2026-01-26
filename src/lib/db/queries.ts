@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase';
-import type { Idea, CreateIdeaInput, UpdateIdeaInput } from './types';
+import type { Idea, CreateIdeaInput, UpdateIdeaInput, Credential } from './types';
+import { encryptToJSON, decryptFromJSON } from '../crypto/encryption';
 
 // ============================================================
 // IDEAS QUERIES
@@ -256,11 +257,12 @@ export async function getDecryptedCredentials(
   const decrypted: Record<string, string> = {};
 
   for (const cred of credentials) {
-    if (cred.is_active && cred.encrypted_value) {
+    const credential = cred as Credential;
+    if (credential.is_active && credential.encrypted_value) {
       try {
-        decrypted[cred.provider] = decryptFromJSON(cred.encrypted_value);
+        decrypted[credential.provider] = decryptFromJSON(credential.encrypted_value);
       } catch (error) {
-        console.error(`Failed to decrypt ${cred.provider} credential:`, error);
+        console.error(`Failed to decrypt ${credential.provider} credential:`, error);
       }
     }
   }

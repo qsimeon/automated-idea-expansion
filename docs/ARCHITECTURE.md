@@ -1,696 +1,1285 @@
-# Architecture Documentation
+# System Architecture - Automated Idea Expansion
+
+**Version:** V3 (Cell-Based Architecture)
+**Last Updated:** January 22, 2026
+**Status:** Production-ready localhost app
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [System Components](#system-components)
+3. [Data Flow](#data-flow)
+4. [Agent Architecture](#agent-architecture)
+5. [Cell-Based Blog System](#cell-based-blog-system)
+6. [Code Generation Pipeline](#code-generation-pipeline)
+7. [Database Schema](#database-schema)
+8. [API Design](#api-design)
+9. [Model Selection Rationale](#model-selection-rationale)
+10. [Security Architecture](#security-architecture)
+11. [Performance Optimization](#performance-optimization)
+12. [Future Production Architecture](#future-production-architecture)
+
+---
 
 ## Overview
 
-The Automated Idea Expansion system uses a multi-agent AI pipeline to transform half-formed ideas into polished content. This document explains the architecture, design decisions, and implementation details.
+### System Purpose
+
+Transform raw ideas into production-quality content:
+- **Blog posts** with images and social media posts
+- **Code projects** with tests, docs, and GitHub repositories
+
+### Design Philosophy
+
+1. **User agency over automation** - Users choose which ideas to expand
+2. **Structured all the way down** - No string parsing; Zod schemas everywhere
+3. **Atomic content blocks** - Cell-based architecture for flexibility
+4. **Cost-optimized** - Right model for each task (~$0.02-0.04/expansion)
+5. **Quality-driven** - Iterative refinement with quality gates
+
+### Key Architectural Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Remove Judge Agent** | Users should pick ideas; saves tokens; gives control |
+| **Cell-based blogs** | Enables multi-platform rendering, atomic edits, no regex |
+| **LangGraph orchestration** | Clear state management, visual debugging, conditional flows |
+| **Zod structured outputs** | Type-safe at runtime, no JSON parsing errors |
+| **GPT-5 Nano for planning** | Ultra-fast, cost-effective structured reasoning |
+| **Claude Sonnet 4.5 for generation** | Best writing & code quality (LMSYS benchmarks) |
 
 ---
 
-## Core Architecture: Multi-Stage Pipelines
+## System Components
 
-All content types follow a consistent 3-stage pattern:
+### Component Diagram
 
 ```
-STAGE 1: Planning
-  ├─ Analyzes idea
-  ├─ Decides structure, tone, sections
-  ├─ Determines if images needed
-  └─ Creates quality rubric
-
-STAGE 2: Generation
-  ├─ Text Generation (main content)
-  └─ Image Generation (if needed, as subcomponents)
-
-STAGE 3: Review
-  ├─ Evaluates against quality rubric
-  ├─ Provides scores by category
-  └─ Recommends: approve / revise / regenerate
-
-OPTIONAL STAGE 4: Iteration
-  └─ Fix specific issues or regenerate (code only, for now)
+┌─────────────────────────────────────────────────────────────┐
+│                      PRESENTATION LAYER                      │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ Ideas Page   │  │ Outputs Page │  │ Output       │      │
+│  │ /ideas       │  │ /outputs     │  │ Viewer       │      │
+│  │              │  │              │  │ /outputs/[id]│      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└─────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        API LAYER                             │
+│                                                              │
+│  POST /api/expand     GET /api/ideas    DELETE /api/outputs │
+│  POST /api/ideas      PUT /api/ideas    GET /api/outputs    │
+└─────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    ORCHESTRATION LAYER                       │
+│                                                              │
+│                      LangGraph Pipeline                      │
+│                      (src/lib/agents/graph.ts)               │
+│                                                              │
+│              Router Agent → Creator Agent                    │
+└─────────────────────────────────────────────────────────────┘
+                             │
+                    ┌────────┴────────┐
+                    ▼                 ▼
+┌────────────────────────────┐  ┌────────────────────────────┐
+│    BLOG CREATOR V3         │  │    CODE CREATOR V2         │
+│    (cell-based)            │  │    (multi-stage)           │
+│                            │  │                            │
+│  1. Planning (GPT-5 Nano)  │  │  1. Planning (GPT-4o-mini) │
+│  2. Generation (Sonnet 4.5)│  │  2. Generation (Sonnet 4.5)│
+│  3. Images (FLUX Schnell)  │  │  3. Review (GPT-4o-mini)   │
+│  4. Review (GPT-4o-mini)   │  │  4. Iteration (if needed)  │
+│                            │  │  5. GitHub Publish         │
+└────────────────────────────┘  └────────────────────────────┘
+                    │                 │
+                    └────────┬────────┘
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      DATA LAYER                              │
+│                                                              │
+│              Supabase PostgreSQL Database                    │
+│           (users, ideas, outputs, executions)                │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Component Responsibilities
+
+#### Presentation Layer (Next.js App Router)
+- **Ideas Page** (`/app/ideas/page.tsx`): List all ideas, create new, expand selected
+- **Outputs Page** (`/app/outputs/page.tsx`): Browse generated content
+- **Output Viewer** (`/app/outputs/[id]/page.tsx`): Render blog/code with format-specific UI
+
+#### API Layer (Next.js Route Handlers)
+- **POST /api/expand**: Trigger idea expansion pipeline
+- **GET/POST/PUT /api/ideas**: CRUD operations for ideas
+- **GET/DELETE /api/outputs**: Manage generated outputs
+
+#### Orchestration Layer (LangGraph)
+- **Graph** (`graph.ts`): State machine orchestrating agent flow
+- **Router Agent** (`router-agent.ts`): Decide format (blog vs code)
+- **Creator Agent** (`creator-agent.ts`): Route to format-specific creator
+
+#### Generation Layer (Format-Specific Creators)
+- **Blog Creator** (`blog-creator.ts`): 4-stage cell-based pipeline
+- **Code Creator** (`code-creator.ts`): 5-stage pipeline with iteration
+
+#### Data Layer (Supabase)
+- **PostgreSQL**: Relational data with Row-Level Security
+- **Storage**: (Future) Image uploads
+- **Auth**: (Future) User authentication
 
 ---
 
-## Content Types
+## Data Flow
 
-### 1. Blog Posts (`blog_post`)
+### Expansion Request Flow
 
-**Purpose:** Written content (1000-2000 words) with optional images and auto-generated social share
+```
+User clicks "Expand" on idea
+         │
+         ▼
+┌────────────────────────────────────────┐
+│ POST /api/expand { ideaId: "..." }    │
+│                                        │
+│ 1. Extract ideaId from request body   │
+│ 2. Validate ideaId exists (400 if not)│
+│ 3. Fetch idea from Supabase            │
+│ 4. Create execution record (status:    │
+│    'running')                          │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ LangGraph.invoke({                     │
+│   userId: TEST_USER_ID,                │
+│   selectedIdea: idea,                  │
+│   chosenFormat: null,                  │
+│   generatedContent: null               │
+│ })                                     │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ Router Agent                           │
+│                                        │
+│ Analyzes idea.title + idea.description │
+│ Decides: blog_post | github_repo       │
+│                                        │
+│ Returns: { format, reasoning }         │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ State update:                          │
+│ { chosenFormat: "blog_post" }          │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ Creator Agent                          │
+│                                        │
+│ if (chosenFormat === 'blog_post')      │
+│   → blogCreator(state)                 │
+│ else if (chosenFormat === 'github_repo')│
+│   → codeCreator(state)                 │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ Blog Creator V3 (4 stages)             │
+│                                        │
+│ Stage 1: Planning                      │
+│   - Sections, tone, image specs        │
+│                                        │
+│ Stage 2: Cell Generation               │
+│   - MarkdownCells + ImageCells         │
+│   - Social media post                  │
+│                                        │
+│ Stage 3: Image Generation              │
+│   - Replace placeholders with URLs     │
+│                                        │
+│ Stage 4: Review                        │
+│   - Score clarity, accuracy, etc.      │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ State update:                          │
+│ { generatedContent: blogOutput }       │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ Save to database:                      │
+│                                        │
+│ INSERT INTO outputs (                  │
+│   user_id, idea_id, format,            │
+│   content_json, status                 │
+│ )                                      │
+│                                        │
+│ UPDATE executions SET                  │
+│   status = 'completed',                │
+│   completed_at = NOW()                 │
+│                                        │
+│ UPDATE ideas SET                       │
+│   status = 'expanded'                  │
+└────────────┬───────────────────────────┘
+             │
+             ▼
+┌────────────────────────────────────────┐
+│ Return response:                       │
+│                                        │
+│ {                                      │
+│   success: true,                       │
+│   outputId: "output-uuid",             │
+│   execution: { ... },                  │
+│   content: { preview, format }         │
+│ }                                      │
+└────────────────────────────────────────┘
+```
 
-**Pipeline (4 Stages):**
-- Planning (GPT-5 Nano) → decides title, sections, tone, image needs
-- Generation (Claude Sonnet 4.5) → creates structured content + up to 3 images with captions
-- Social Share (integrated in generation) → auto-generates tweet (max 280 chars, 2-3 hashtags, optional image)
-- Review (GPT-4o-mini) → scores clarity, accuracy, engagement, structure
+### State Management in LangGraph
 
-**Features:**
-- Cell-based architecture: atomic content blocks (MarkdownCell, ImageCell) instead of markdown strings
-- Context-aware image generation (images understand blog content)
-- Smart placement (featured, inline, end)
-- Automatic social media post for sharing
-- Type-safe structured output with Zod schemas
+The graph maintains state using TypeScript interfaces:
 
-**Architecture:**
-- Cell-based generation: BlogCell[] with discriminated unions
-- Images and social posts generated during content creation (not post-processing)
-- Direct model instantiation (no model factory abstraction)
+```typescript
+interface AgentState {
+  userId: string;              // Current user ID (TEST_USER_ID in dev)
+  selectedIdea: Idea | null;   // User-selected idea to expand
+  chosenFormat: string | null; // 'blog_post' | 'github_repo'
+  generatedContent: any | null;// Output from creator
+  errors: string[];            // Accumulated errors
+}
+```
 
-**Files:**
-- `src/lib/agents/creators/blog/blog-creator.ts` - Main orchestrator
-- `src/lib/agents/creators/blog/blog-schemas.ts` - Cell and content schemas
-- `src/lib/agents/creators/social-share-generator.ts` - Social media post generator
-- `src/lib/agents/creators/image-creator.ts` - Image generation subagent
+**State transitions:**
 
-### 2. Code Projects (`github_repo`)
-
-**Purpose:** Interactive code (Python/JS/TS notebooks, CLI tools, web apps)
-
-**Pipeline (Advanced):**
-- Planning (GPT-5 Nano) → decides language, framework, architecture + quality rubric
-- Generation (Claude Sonnet 4.5) → creates all files
-- Review (GPT-5 Nano) → evaluates correctness, security, quality, completeness
-- **Iteration Loop** (unique to code):
-  - If score < 75: Fix specific files (Fixer Agent) OR regenerate all
-  - Re-review after fixes
-  - Maximum 3 iterations
-  - Early stopping if quality acceptable
-
-**Features:**
-- Targeted fixes (only fix 1-3 files, not entire project)
-- Quality rubrics with 4 dimensions
-- Automatic GitHub publishing
-- Cost-optimized (fixes save 60-80% vs full regeneration)
-
-**Files:**
-- `src/lib/agents/creators/code/code-creator.ts` - Main orchestrator
-- `src/lib/agents/creators/code/planning-agent.ts` - Enhanced planning
-- `src/lib/agents/creators/code/generation-agent.ts` - Code generation
-- `src/lib/agents/creators/code/critic-agent.ts` - Review with actionable feedback
-- `src/lib/agents/creators/code/fixer-agent.ts` - Targeted file fixes
+1. **Initial**: `{ userId, selectedIdea, chosenFormat: null, generatedContent: null }`
+2. **After Router**: `{ ..., chosenFormat: 'blog_post' }`
+3. **After Creator**: `{ ..., generatedContent: blogOutput }`
+4. **End**: Return final state to API endpoint
 
 ---
 
-## Key Design Decisions
+## Agent Architecture
 
-### Decision 1: Simplified Content Pipeline
+### LangGraph State Machine
 
-**Evolution:**
+```typescript
+// src/lib/agents/graph.ts
+
+const workflow = new StateGraph(AgentState)
+  .addNode('router', routerAgent)     // Decide format
+  .addNode('creator', creatorAgent)   // Generate content
+  .addEdge(START, 'router')           // Entry point
+  .addEdge('router', 'creator')       // Sequential flow
+  .addEdge('creator', END);           // Exit point
+
+const graph = workflow.compile();
 ```
-V1: Router → blog | thread | code | IMAGE ❌ (Too fragmented)
-V2: Router → blog | thread | code (Images as components) ✓
-V3: Router → blog | code (Unified writing format) ✓✓
-```
 
-**Current Architecture:**
-```
-Router → blog_post (with images + social share) | github_repo
-```
-
-**Why?**
-- **Images & social posts are components**, not standalone formats
-- **Blogs handle all written content**: long-form articles, tutorials, AND bite-sized tips
-- **Auto-generated social share**: every blog gets a ready-to-post tweet
-- **Reduced complexity**: 2 formats instead of 4
-- **Better UX**: One format for writing, one for code
-
-### Decision 2: Multi-Stage Pipelines for All Content
-
-**Why separate planning from generation?**
-- **Better quality**: Planning forces structured thinking
-- **Consistency**: Same evaluation criteria every time
-- **Transparency**: User can see reasoning
-- **Extensibility**: Easy to add human-in-the-loop approval
-
-**Why add a review stage?**
-- **LLMs make mistakes**: Catch bugs/errors before publishing
-- **Quality gates**: Ensure minimum standards
-- **Feedback loops**: Review informs fixes/regeneration
-
-### Decision 3: Model Diversity (Not One-Size-Fits-All)
-
-**Model Selection by Task:**
-| Task | Model | Why? |
-|------|-------|------|
-| Planning (Blog/Code) | GPT-5 Nano | Fast, cost-effective, good at structured reasoning |
-| Blog Generation | Claude Sonnet 4.5 | Best at complex structured output (cells, nested schemas) |
-| Coding | Claude Sonnet 4.5 | Best at code generation |
-| Image Prompts | GPT-4o-mini | Creative prompt engineering |
-| Review (All) | GPT-4o-mini | Fast, consistent evaluation |
-| Routing/Judging | GPT-4o-mini | Fast decision-making |
-
-**Cost Impact:**
-- Planning: GPT-5 Nano is extremely cost-effective (only supports temperature=1)
-- Blog Writing: Claude Sonnet handles complex schemas (Haiku insufficient for nested structures)
-- Review: GPT-4o-mini is fast and consistent ($0.15/1M input)
-- Coding: Claude Sonnet worth the premium ($3/1M input)
-
-### Decision 4: Iteration Loops (Code Only, For Now)
-
-**Why only for code?**
-- Code quality is **measurable** (syntax errors, security issues)
-- Code has clear **correctness criteria**
-- Blogs/threads are more subjective (human judgment needed)
-
-**Future:** Could add iteration to blogs/threads if quality issues persist.
-
----
-
-## Agent System Architecture
+**Why LangGraph?**
+- Visual state transitions (inspect with `.getGraph()`)
+- Clear separation of agent responsibilities
+- Easy to add conditional edges (future: retry logic)
+- Built-in checkpointing for long-running operations
 
 ### Router Agent
 
-**Responsibility:** Choose the best format for an idea
+**File**: `src/lib/agents/router-agent.ts`
 
-**Decision Logic:**
-1. If ML/AI keywords → `github_repo` (code exploration)
-2. If "build X" or "implement Y" → `github_repo` (tool/demo)
-3. If hands-on/experimental → `github_repo` (interactive value)
-4. If conceptual/explanatory → `blog_post`
-5. If written content (tips, insights, tutorials) → `blog_post`
-6. When uncertain → prefer code (more valuable for technical ideas)
+**Purpose**: Analyze idea and decide optimal format
 
-**Files:** `src/lib/agents/router-agent.ts`
+**Model**: GPT-4o-mini (T=0.5)
+- Fast routing decisions (~500ms)
+- Consistent, deterministic choices
+- Cost-effective ($0.00005/request)
 
-### Creator Agent (Orchestrator)
+**Input**: `AgentState.selectedIdea`
 
-**Responsibility:** Route to format-specific creator
+**Output**: `{ format: 'blog_post' | 'github_repo', reasoning: string }`
 
-**Flow:**
-```
-Creator Agent receives:
-  ├─ Idea (from Judge)
-  └─ Format (from Router)
-
-Routes to:
-  ├─ createBlog() for blog_post
-  └─ createCodeProject() for github_repo
-```
-
-**Files:** `src/lib/agents/creator-agent.ts`
-
-### Image Generation Subagent
-
-**Responsibility:** Generate images as components (NOT standalone creator)
-
-**Functions:**
-- `createImagePrompt(spec, context)` - Create detailed prompt from concept + content context
-- `generateImage(prompt, aspectRatio)` - Generate actual image via API
-- `generateImageCaption(prompt, concept)` - Create alt text
-- `generateImageForContent(spec, context)` - Complete pipeline
-
-**API Priority:**
-1. fal.ai (FLUX Schnell) - fast, generous free tier
-2. Hugging Face (SDXL) - free tier
-3. Replicate (FLUX) - paid but cheap
-
-**Files:** `src/lib/agents/creators/image-creator.ts`
-
----
-
-## Structured Outputs with Zod
-
-**Problem:** LLMs sometimes return invalid JSON, requiring complex parsing/validation
-
-**Solution:** Use LangChain's `withStructuredOutput()` + Zod schemas
-
-**Example:**
+**Decision Logic**:
 ```typescript
-import { z } from 'zod';
-import { ChatOpenAI } from '@langchain/openai';
+const prompt = `
+Analyze this idea and decide the best format:
 
-const BlogPlanSchema = z.object({
-  title: z.string(),
-  sections: z.array(z.string()),
-  tone: z.string(),
-  targetWordCount: z.number(),
-  includeImages: z.boolean(),
-  imageSpecs: z.array(ImageSpecSchema),
+Title: ${idea.title}
+Description: ${idea.description}
+
+Formats:
+- blog_post: Written explanations, tutorials, guides
+- github_repo: Code demonstrations, tools, libraries
+
+Choose the format that delivers the most value to the audience.
+`;
+
+const schema = z.object({
+  format: z.enum(['blog_post', 'github_repo']),
+  reasoning: z.string().describe('Why this format?')
 });
 
-const model = new ChatOpenAI({
-  modelName: 'gpt-5-nano-2025-08-07',
-  apiKey: process.env.OPENAI_API_KEY,
-});
-const structuredModel = model.withStructuredOutput(BlogPlanSchema);
+const model = new ChatOpenAI({ model: 'gpt-4o-mini', temperature: 0.5 })
+  .withStructuredOutput(schema);
 
-const plan = await structuredModel.invoke(prompt);
-// ✅ Guaranteed valid BlogPlan, no parsing needed!
+const result = await model.invoke(prompt);
 ```
 
-**Benefits:**
-- ✅ **Zero JSON parsing errors** (schema guarantees validity)
-- ✅ **Type safety** (TypeScript knows the structure)
-- ✅ **~340 lines of error handling removed** (compared to manual parsing)
-- ✅ **Cleaner code** (no try/catch blocks for parsing)
+### Creator Agent
 
-**Used in:**
-- Blog planning, generation (cells), social post, review
-- Code planning, generation, review
-- Routing and judging
+**File**: `src/lib/agents/creator-agent.ts`
 
----
+**Purpose**: Route to format-specific creator
 
-## Quality Rubrics
-
-**Purpose:** Consistent, measurable evaluation criteria
-
-**Structure:**
+**Logic**:
 ```typescript
-interface QualityRubric {
-  correctness: {
-    weight: 0.4,                    // 40% of total score
-    criteria: [
-      "Code runs without errors",
-      "All functions handle edge cases",
-      "Input validation implemented"
-    ]
-  },
-  security: { weight: 0.3, criteria: [...] },
-  codeQuality: { weight: 0.2, criteria: [...] },
-  completeness: { weight: 0.1, criteria: [...] }
+export async function creatorAgent(state: AgentState): Promise<AgentState> {
+  const { chosenFormat, selectedIdea, userId } = state;
+
+  if (chosenFormat === 'blog_post') {
+    const blogOutput = await blogCreator(selectedIdea, userId);
+    return { ...state, generatedContent: blogOutput };
+  }
+
+  else if (chosenFormat === 'github_repo') {
+    const codeOutput = await codeCreatorV2(selectedIdea, userId);
+    return { ...state, generatedContent: codeOutput };
+  }
+
+  throw new Error(`Unknown format: ${chosenFormat}`);
 }
 ```
 
-**Scoring Method:**
-1. Evaluate each criterion (0-100)
-2. Calculate category score = average of criteria in that category
-3. Overall score = weighted sum of category scores
-
-**Example:**
-- Correctness: 90 (3 criteria: 95, 85, 90)
-- Security: 85 (2 criteria: 80, 90)
-- Code Quality: 80 (4 criteria: 75, 80, 85, 80)
-- Completeness: 70 (2 criteria: 65, 75)
-
-**Overall = (90 × 0.4) + (85 × 0.3) + (80 × 0.2) + (70 × 0.1) = 84/100**
-
 ---
 
-## Cost Analysis
+## Cell-Based Blog System
 
-### Blog Post Creation
+### The Problem with String Manipulation
 
-| Stage | Model | Tokens | Cost | Duration |
-|-------|-------|--------|------|----------|
-| Planning | GPT-5 Nano | ~500 | $0.0001 | 1s |
-| Generation (Cells + Social) | Claude Sonnet 4.5 | ~2500 | $0.0075 | 6s |
-| Image Generation (×3) | GPT-4o-mini + fal.ai | ~600 | $0.015 | 15s |
-| Review | GPT-4o-mini | ~800 | $0.0003 | 2s |
-| **Total** | | ~4400 | **$0.023** | **24s** |
-
-### Code Project Creation (with iteration)
-
-| Scenario | Iterations | Cost | Duration |
-|----------|-----------|------|----------|
-| Best case (no fixes) | 0 | $0.027 | 30s |
-| Average case (2 fixes) | 2 | $0.061 | 60s |
-| Worst case (5 iterations) | 5 | $0.110 | 120s |
-
-**Cost Savings from Targeted Fixes:**
-- Full regeneration: $0.035 per attempt
-- Targeted fix (2 files): $0.015 per attempt
-- **Savings: 60-70%**
-
----
-
-## Environment Variables
-
-```bash
-# AI Models
-OPENAI_API_KEY=sk-...              # GPT models
-ANTHROPIC_API_KEY=sk-ant-...       # Claude models
-
-# Image Generation
-FAL_KEY=...                        # fal.ai (primary)
-HUGGINGFACE_API_KEY=hf_...         # Hugging Face (fallback)
-REPLICATE_API_TOKEN=r8_...         # Replicate (fallback)
-
-# Publishing
-GITHUB_TOKEN=ghp_...               # For code publishing
-GITHUB_USERNAME=your_username      # For GitHub repos
-
-# Database
-NEXT_PUBLIC_SUPABASE_URL=https://...
-SUPABASE_SERVICE_ROLE_KEY=...
-```
-
----
-
-## File Structure → Implementation Map
-
-**How the architecture maps to actual code:**
-
-```
-src/
-├── app/                              # Next.js frontend
-│   ├── api/
-│   │   ├── ideas/route.ts            # Create/list ideas (starts here 📥)
-│   │   └── expand/route.ts           # Trigger pipeline (🚀 entry point)
-│   ├── page.tsx                      # Idea input UI
-│   └── outputs/page.tsx              # View generated content
-│
-├── lib/
-│   ├── db/
-│   │   ├── schemas.ts                # ✅ Cleaned! IdeaSchema only
-│   │   ├── types.ts                  # DB interfaces (Idea, Output)
-│   │   ├── queries.ts                # Supabase CRUD operations
-│   │   └── supabase.ts               # DB client
-│   │
-│   ├── agents/                       # 🧠 The AI pipeline
-│   │   ├── types.ts                  # Agent state, plans, rubrics
-│   │   ├── judge-agent.ts            # 📊 Pick best idea
-│   │   ├── router-agent.ts           # 🎯 Choose format (blog_post | github_repo)
-│   │   ├── creator-agent.ts          # Orchestrates format creators
-│   │   │
-│   │   ├── creators/
-│   │   │   ├── blog/                 # 📝 Blog creation
-│   │   │   │   ├── blog-creator.ts   # 4-stage orchestrator
-│   │   │   │   └── blog-schemas.ts   # Cell-based schemas
-│   │   │   ├── social-share-generator.ts # Social media posts
-│   │   │   ├── image-creator.ts      # 🎨 Image generation subagent
-│   │   │   │
-│   │   │   └── code/                 # 💻 Code creation (advanced)
-│   │   │       ├── types.ts          # Code-specific types
-│   │   │       ├── code-creator.ts   # 5-stage orchestrator
-│   │   │       ├── planning-agent.ts # Plan with quality rubrics
-│   │   │       ├── generation-agent.ts# Generate all files
-│   │   │       ├── critic-agent.ts   # Review with scoring
-│   │   │       └── fixer-agent.ts    # Fix specific files
-│   │   │
-│   │   └── publishers/
-│   │       └── github-publisher.ts   # Publish code to GitHub
-│   │
-│   └── logging/
-│       └── logger.ts                 # Centralized logger with context
-│
-└── docs/
-    ├── ARCHITECTURE.md               # 👈 This file (complete guide)
-    └── README.md                     # Quick start
-
-```
-
-**The Pipeline Flow Through Files:**
-
-```
-1. User creates idea
-   └─ app/page.tsx → api/ideas/route.ts → db/queries.ts
-
-2. User clicks "Expand"
-   └─ api/expand/route.ts (📥) creates logger, starts pipeline
-
-3. Judge selects best idea
-   └─ agents/judge-agent.ts (📊) evaluates all pending ideas
-
-4. Router chooses format
-   └─ agents/router-agent.ts (🎯) decides blog_post or github_repo
-
-5. Creator orchestrates format-specific pipeline
-   └─ agents/creator-agent.ts routes to:
-      ├─ creators/blog/blog-creator.ts (📝)
-      └─ creators/code/code-creator.ts (💻)
-
-6. Save output
-   └─ db/queries.ts stores generated content
-
-7. User views result
-   └─ app/outputs/page.tsx displays notebook
-```
-
----
-
-## Logging Architecture
-
-### Logger Utility
-
-The system uses a centralized `Logger` class for consistent, traceable logging across all agents.
-
-**Location:** `src/lib/logging/logger.ts`
-
-**Features:**
-- Execution ID generation and tracking
-- ISO timestamps on all logs
-- Context propagation (userId, ideaId, stage, subStage)
-- Token usage tracking
-- Stage duration measurement
-- Child logger creation for sub-stages
-
-**Usage Example:**
+**Old approach (V1-V2)**:
 ```typescript
-import { createLogger } from '@/lib/logging/logger';
+// Generate markdown string
+const markdown = await generateBlog(idea);
 
-const logger = createLogger({
-  executionId: 'exec-abc123',
-  userId: 'user-456',
-  ideaId: 'idea-789',
-  stage: 'blog-creator',
+// Parse markdown (fragile!)
+const sections = markdown.split('\n## ');
+const images = markdown.match(/!\[.*?\]\((.*?)\)/g);
+
+// Modify content (brittle!)
+markdown = markdown.replace('![image](url)', '<img src="url" />');
+```
+
+**Issues:**
+- ❌ Regex breaks on edge cases
+- ❌ No type safety
+- ❌ Hard to validate
+- ❌ Platform-specific rendering requires string manipulation
+
+### Cell-Based Architecture
+
+**Core Concept**: Blogs are **arrays of typed cells**, not markdown strings.
+
+```typescript
+type BlogCell = MarkdownCell | ImageCell;
+
+type MarkdownCell = {
+  cellType: "markdown";
+  blocks: Array<
+    | { blockType: "h1" | "h2" | "h3"; text: string }
+    | { blockType: "paragraph"; text: string }
+    | { blockType: "bulletList"; items: string[] }
+    | { blockType: "numberedList"; items: string[] }
+    | { blockType: "codeBlock"; language: string; lines: string[] }
+    | { blockType: "hr" }
+  >;
+};
+
+type ImageCell = {
+  cellType: "image";
+  imageUrl: string;
+  caption: string;
+  placement: "featured" | "inline" | "end";
+};
+```
+
+**Generation**:
+```typescript
+// Claude Sonnet 4.5 generates structured cells
+const schema = z.object({
+  title: z.string(),
+  cells: z.array(BlogCellSchema),  // Validated at generation time!
+  socialPost: SocialPostSchema
 });
 
-logger.info('📋 STAGE 1: Planning', { model: 'gpt-4o-mini' });
-logger.trackTokens({ input: 500, output: 1200, model: 'gpt-4o-mini' });
-
-const planLogger = logger.child({ subStage: 'planning' });
-planLogger.info('Plan created', { sections: 5 });
+const structuredModel = model.withStructuredOutput(schema);
+const result = await structuredModel.invoke(prompt);  // Always valid!
 ```
 
-### Log Format
+**Rendering**:
+```typescript
+// Render to HTML (frontend)
+function renderBlogCell(cell: BlogCell): JSX.Element {
+  if (cell.cellType === 'markdown') {
+    return cell.blocks.map(renderBlock);
+  } else {
+    return <img src={cell.imageUrl} alt={cell.caption} />;
+  }
+}
 
-**Human-Readable (Current):**
-```
-[2026-01-21T15:30:45.123Z] INFO  [exec-abc123] [stage/substage] Message
-   key: value
-   key2: value2
+// Render to markdown (export, email, etc.)
+function renderBlogToMarkdown(cells: BlogCell[]): string {
+  return cells.map(cell => {
+    if (cell.cellType === 'markdown') {
+      return cell.blocks.map(blockToMarkdown).join('\n');
+    } else {
+      return `![${cell.caption}](${cell.imageUrl})`;
+    }
+  }).join('\n\n');
+}
 ```
 
-**Future: Structured JSON:**
+### Benefits of Cell-Based Approach
+
+| Benefit | Description |
+|---------|-------------|
+| **Type-safe** | Zod validates at generation; TypeScript types in code |
+| **Multi-platform** | Render same cells as HTML, markdown, JSON, PDF, etc. |
+| **Atomic edits** | Modify `cells[3].blocks[1].text` without string parsing |
+| **Validated** | Invalid structures rejected by schema during generation |
+| **Inspectable** | Analyze structure programmatically (word count, images, etc.) |
+
+### Social Media Integration
+
+Blogs automatically include a social media post:
+
+```typescript
+type SocialPost = {
+  content: string;        // Tweet text ending with [BLOG_URL]
+  hashtags: string[];     // 2-3 relevant tags
+  platform: "twitter";    // Currently Twitter/X only
+  includeImage: boolean;  // Should we include an image?
+  imageUrl?: string;      // URL if includeImage=true
+  imageCaption?: string;  // Alt text for image
+};
+```
+
+**Frontend rendering**:
+```tsx
+<div className="social-share-card">
+  <h3>Share on Twitter/X</h3>
+  <p>{socialPost.content.replace('[BLOG_URL]', window.location.href)}</p>
+  <p className="hashtags">{socialPost.hashtags.map(tag => `#${tag}`).join(' ')}</p>
+
+  {socialPost.imageUrl && (
+    <img src={socialPost.imageUrl} alt={socialPost.imageCaption} />
+  )}
+
+  <button onClick={() => copyToClipboard(socialPost)}>
+    📋 Copy Tweet
+  </button>
+</div>
+```
+
+---
+
+## Code Generation Pipeline
+
+### Multi-Stage Architecture
+
+```
+Stage 1: Planning (GPT-4o-mini, ~1200 tokens)
+│
+│ Input: idea.title + idea.description
+│ Output: {
+│   outputType: "cli-app" | "web-app" | "library" | "notebook",
+│   language: "python" | "typescript" | "javascript",
+│   framework?: "react" | "next" | "flask" | "fastapi",
+│   architecture: { files: [...], structure: "..." },
+│   qualityRubric: { correctness, security, quality, completeness }
+│ }
+│
+▼
+Stage 2: Generation (Claude Sonnet 4.5, ~5000 tokens)
+│
+│ Input: Plan from Stage 1
+│ Output: {
+│   files: [
+│     { path: "main.py", content: "..." },
+│     { path: "README.md", content: "..." },
+│     { path: "requirements.txt", content: "..." }
+│   ],
+│   dependencies: ["requests", "click"],
+│   instructions: "Run `pip install -r requirements.txt`..."
+│ }
+│
+▼
+Stage 3: Review (GPT-4o-mini, ~4000 tokens)
+│
+│ Input: Generated code + quality rubric
+│ Output: {
+│   scores: {
+│     correctness: 85,
+│     security: 90,
+│     codeQuality: 80,
+│     completeness: 95
+│   },
+│   overallScore: 87.5,
+│   issues: [
+│     { file: "main.py", line: 23, severity: "warning", message: "..." }
+│   ],
+│   recommendation: "approve" | "fix" | "regenerate"
+│ }
+│
+▼
+Stage 4: Quality Gate
+│
+│ If score >= 75 → APPROVE → Go to Stage 5
+│ If score < 60  → REGENERATE → Go to Stage 2 (full regen)
+│ If score 60-74 → FIX → Fixer Agent (targeted fixes) → Go to Stage 3
+│
+│ Max 3 iterations to prevent infinite loops
+│
+▼
+Stage 5: GitHub Publish (Octokit)
+│
+│ 1. Create repository (private by default)
+│ 2. Upload files via GitHub API
+│ 3. Create initial commit
+│ 4. Return { repoUrl, publishedAt }
+│
+▼
+Output: {
+  format: "github_repo",
+  repoUrl: "https://github.com/username/repo",
+  files: [...],
+  reviewScore: 87.5,
+  iterationCount: 0
+}
+```
+
+### Iteration Strategy
+
+**Problem**: Initial generation isn't always perfect (score < 75)
+
+**Solution**: Iterative refinement with smart decisions
+
+**Decision Tree**:
+```
+Score < 60?
+  → Full regeneration (throw away everything, start over)
+
+Score 60-74?
+  → Targeted fixes:
+    - Identify problematic files (from review.issues)
+    - Regenerate only those 1-3 files
+    - Preserve working files
+    - Re-review updated code
+
+Score >= 75?
+  → Approve and publish!
+```
+
+**Why this works:**
+- **Cost-effective**: Fix 2 files, not 10
+- **Preserves good work**: Don't throw away what's working
+- **Prevents loops**: Max 3 iterations, then force approve
+
+**Cost comparison:**
+- Full regen: $0.015 (5000 tokens)
+- Targeted fix: $0.004 (1300 tokens)
+- **Savings**: ~73% per iteration
+
+---
+
+## Database Schema
+
+### Entity Relationship Diagram
+
+```
+┌──────────────┐
+│    users     │
+├──────────────┤
+│ id (PK)      │──┐
+│ clerk_user_id│  │
+│ email        │  │
+│ name         │  │
+│ timezone     │  │
+│ created_at   │  │
+└──────────────┘  │
+                  │
+         ┌────────┴────────┐
+         │                 │
+         ▼                 ▼
+┌──────────────┐   ┌──────────────┐
+│    ideas     │   │   outputs    │
+├──────────────┤   ├──────────────┤
+│ id (PK)      │   │ id (PK)      │
+│ user_id (FK) │   │ user_id (FK) │
+│ title        │   │ idea_id (FK) │───┐
+│ description  │   │ format       │   │
+│ status       │   │ content_json │   │
+│ created_at   │   │ preview_text │   │
+│ updated_at   │   │ status       │   │
+└──────┬───────┘   │ created_at   │   │
+       │           └──────────────┘   │
+       │                              │
+       └──────────────────┬───────────┘
+                          │
+                          ▼
+                  ┌──────────────┐
+                  │  executions  │
+                  ├──────────────┤
+                  │ id (PK)      │
+                  │ user_id (FK) │
+                  │ idea_id (FK) │
+                  │ status       │
+                  │ format       │
+                  │ started_at   │
+                  │ completed_at │
+                  │ error_message│
+                  │ metadata     │
+                  └──────────────┘
+```
+
+### Table Schemas
+
+#### `users`
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  clerk_user_id TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  timezone TEXT DEFAULT 'UTC',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_clerk_id ON users(clerk_user_id);
+```
+
+#### `ideas`
+```sql
+CREATE TABLE ideas (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'expanded', 'archived')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_ideas_user_id ON ideas(user_id);
+CREATE INDEX idx_ideas_status ON ideas(status);
+```
+
+#### `outputs`
+```sql
+CREATE TABLE outputs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  idea_id UUID REFERENCES ideas(id) ON DELETE SET NULL,
+  format TEXT NOT NULL CHECK (format IN ('blog_post', 'github_repo')),
+  content_json JSONB NOT NULL,
+  preview_text TEXT,
+  status TEXT NOT NULL DEFAULT 'completed',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_outputs_user_id ON outputs(user_id);
+CREATE INDEX idx_outputs_idea_id ON outputs(idea_id);
+CREATE INDEX idx_outputs_format ON outputs(format);
+```
+
+**`content_json` structure**:
+
+For `blog_post`:
 ```json
 {
-  "timestamp": "2026-01-21T15:30:45.123Z",
-  "level": "INFO",
-  "executionId": "exec-abc123",
-  "userId": "user-456",
-  "ideaId": "idea-789",
-  "stage": "stage",
-  "subStage": "substage",
-  "message": "Message",
-  "data": { "key": "value" }
+  "title": "Blog Title",
+  "cells": [...],
+  "markdown": "# Title\n\nParagraph...",
+  "wordCount": 1847,
+  "readingTimeMinutes": 8,
+  "images": [
+    { "imageUrl": "https://...", "caption": "..." }
+  ],
+  "socialPost": {
+    "content": "Tweet text [BLOG_URL]",
+    "hashtags": ["AI", "MachineLearning"],
+    "imageUrl": "https://..."
+  },
+  "_reviewScore": 88,
+  "_sections": ["Introduction", "Main Content", "Conclusion"]
 }
 ```
 
-### Log Levels
-
-- **DEBUG:** Detailed internal state (model parameters, prompt details, schema validation)
-- **INFO:** Key events (stage start/end, decisions made, metrics)
-- **WARN:** Recoverable issues (API key missing, using fallback, quality score low)
-- **ERROR:** Failures (exceptions, invalid state, API errors)
-
-### Tracing Executions
-
-Each pipeline run gets a unique execution ID (e.g., `exec-abc123`). To trace a specific run:
-
-1. Find the execution ID from the first log line
-2. Filter/search logs for that ID
-3. Follow the progression:
-   ```
-   [api-endpoint] → [judge-agent] → [router-agent] → [creator] → [api-endpoint]
-   ```
-
-### Context Propagation
-
-The logger is passed through the LangGraph state, making it available to all agents:
-
-**Flow:**
-```
-API Endpoint creates logger
-    ↓
-Graph receives logger in initial state
-    ↓
-Judge Agent: logger.child({ stage: 'judge-agent' })
-    ↓
-Router Agent: logger.child({ stage: 'router-agent' })
-    ↓
-Creator Agent: logger.child({ stage: 'creator-agent' })
-    ↓
-Format-specific creator: createLogger({ ideaId, stage: 'blog-creator' })
+For `github_repo`:
+```json
+{
+  "repoUrl": "https://github.com/user/repo",
+  "files": [
+    { "path": "main.py", "content": "..." }
+  ],
+  "dependencies": ["requests", "click"],
+  "instructions": "Setup instructions",
+  "metadata": {
+    "language": "python",
+    "outputType": "cli-app",
+    "reviewScore": 87,
+    "iterationCount": 1
+  }
+}
 ```
 
-### Token Tracking
+#### `executions`
+```sql
+CREATE TABLE executions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  idea_id UUID REFERENCES ideas(id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+  format TEXT,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  duration_seconds INTEGER,
+  error_message TEXT,
+  metadata JSONB
+);
 
-Each stage tracks LLM token usage:
+CREATE INDEX idx_executions_user_id ON executions(user_id);
+CREATE INDEX idx_executions_status ON executions(status);
+```
+
+### Row-Level Security (RLS)
+
+All tables have RLS enabled:
+
+```sql
+ALTER TABLE ideas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE outputs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE executions ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access their own data
+CREATE POLICY "Users can view own ideas"
+  ON ideas FOR SELECT
+  USING (user_id IN (
+    SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'
+  ));
+
+-- Similar policies for INSERT, UPDATE, DELETE on all tables
+```
+
+**Note**: Currently using `SUPABASE_SERVICE_ROLE_KEY` which bypasses RLS. In production, use Supabase Auth with user tokens.
+
+---
+
+## API Design
+
+### RESTful Endpoints
+
+#### POST /api/expand
+
+**Purpose**: Trigger idea expansion pipeline
+
+**Request**:
+```typescript
+{
+  ideaId: string;  // UUID of idea to expand (REQUIRED)
+}
+```
+
+**Response (Success - 200)**:
+```typescript
+{
+  success: true,
+  execution: {
+    id: string;
+    status: "completed";
+    selectedIdea: { id: string; title: string };
+    format: "blog_post" | "github_repo";
+    durationSeconds: number;
+    errors: string[];
+  },
+  content: {
+    format: string;
+    preview: string;
+  },
+  outputId: string;  // Use to view at /outputs/[id]
+}
+```
+
+**Error Responses**:
+```typescript
+// 400 - Missing ideaId
+{ success: false, error: "ideaId is required" }
+
+// 404 - Invalid ideaId
+{ success: false, error: "Idea not found: uuid-string" }
+
+// 500 - Pipeline failure
+{ success: false, error: "Failed to expand idea", details: "..." }
+```
+
+**Implementation**:
+```typescript
+// src/app/api/expand/route.ts
+
+export async function POST(request: Request) {
+  const { ideaId } = await request.json();
+
+  if (!ideaId) {
+    return NextResponse.json(
+      { success: false, error: 'ideaId is required' },
+      { status: 400 }
+    );
+  }
+
+  // Fetch idea
+  const idea = await getIdea(ideaId);
+  if (!idea) {
+    return NextResponse.json(
+      { success: false, error: `Idea not found: ${ideaId}` },
+      { status: 404 }
+    );
+  }
+
+  // Create execution record
+  const execution = await createExecution(TEST_USER_ID, ideaId);
+
+  // Run pipeline
+  const result = await graph.invoke({
+    userId: TEST_USER_ID,
+    selectedIdea: idea,
+    chosenFormat: null,
+    generatedContent: null,
+    errors: []
+  });
+
+  // Save output
+  const output = await saveOutput({
+    userId: TEST_USER_ID,
+    ideaId,
+    format: result.chosenFormat,
+    content: result.generatedContent
+  });
+
+  // Update execution & idea
+  await updateExecution(execution.id, {
+    status: 'completed',
+    completedAt: new Date()
+  });
+  await updateIdea(ideaId, { status: 'expanded' });
+
+  return NextResponse.json({
+    success: true,
+    execution,
+    outputId: output.id,
+    content: {
+      format: output.format,
+      preview: extractPreview(output)
+    }
+  });
+}
+```
+
+---
+
+## Model Selection Rationale
+
+### The Cost-Quality-Speed Triangle
+
+Every model choice balances three factors:
+
+1. **Cost**: $/1M tokens
+2. **Quality**: Output accuracy and capabilities
+3. **Speed**: Latency per request
+
+### Current Model Assignments
+
+| Task | Model | Cost/1M Input | Speed | Quality | Why? |
+|------|-------|---------------|-------|---------|------|
+| **Router** | GPT-4o-mini | $0.15 | Fast (~500ms) | Good | Simple decision, no creativity needed |
+| **Blog Planning** | GPT-5 Nano | $0.10 | Ultra-fast (<300ms) | Excellent | Structured reasoning, forced T=1.0 |
+| **Blog Generation** | Claude Sonnet 4.5 | $3.00 | Moderate (~3s) | Best | Superior writing, handles schemas |
+| **Code Planning** | GPT-4o-mini | $0.15 | Fast | Good | Quick architectural decisions |
+| **Code Generation** | Claude Sonnet 4.5 | $3.00 | Moderate | Best | Top-rated code quality (LMSYS) |
+| **Review** | GPT-4o-mini | $0.15 | Fast | Good | Consistent evaluation, no creativity |
+| **Image** | FLUX Schnell | $0.001/img | Fast (~2s) | High | Photorealistic, reliable |
+
+### Why Not Use GPT-5 Opus or Claude Opus 4.5?
+
+**GPT-5 Opus** (most powerful OpenAI model):
+- ❌ Cost: $15/1M input tokens (100x more than mini)
+- ❌ Speed: 5-10s per request
+- ✅ Quality: Marginally better than Sonnet 4.5
+- **Verdict**: Not worth the 5x cost increase for our use case
+
+**Claude Opus 4.5** (most powerful Anthropic model):
+- ❌ Cost: $15/1M input tokens (5x more than Sonnet)
+- ❌ Speed: 4-8s per request
+- ✅ Quality: Better reasoning, longer context
+- **Verdict**: Overkill for our content generation needs
+
+### Why Claude Sonnet 4.5 for Generation?
+
+**Benchmarks** (LMSYS Chatbot Arena, Dec 2025):
+- Code generation: #1 (beats GPT-5 Opus)
+- Creative writing: #2 (beats all GPT models)
+- Following instructions: #1
+- Structured output: Excellent (Zod schemas work reliably)
+
+**Cost-effectiveness**:
+- $3/1M input vs $15/1M for Opus
+- 5000 tokens/request → $0.015/expansion
+- Quality difference minimal for blog/code generation
+
+### Temperature Settings Explained
+
+| Task | Temperature | Rationale |
+|------|-------------|-----------|
+| Router | 0.5 | Consistent decisions, slight creativity |
+| Planning | 1.0 | GPT-5 Nano only supports T=1.0 |
+| Blog Generation | 0.8 | Creative writing, varied expression |
+| Code Generation | 0.7 | Balance between creativity & correctness |
+| Review | 0.5 | Consistent evaluations |
+
+**Why not T=0?**
+- T=0 is deterministic but can be repetitive
+- T=0.5-0.8 allows variety while maintaining quality
+- T=1.0+ introduces too much randomness
+
+---
+
+## Security Architecture
+
+### Current State (Development)
+
+**Authentication**: None (using `TEST_USER_ID`)
+
+**API Keys**: Stored in `.env.local` (not committed to git)
+
+**Database**: Supabase with Row-Level Security (bypassed via service role key)
+
+**CORS**: Disabled (all requests from same origin)
+
+### Production Security Plan (Phase 2)
+
+#### Authentication Flow
+
+```
+User visits /login
+      │
+      ▼
+NextAuth GitHub OAuth
+      │
+      ▼
+GitHub returns access_token
+      │
+      ▼
+Store encrypted token in credentials table
+      │
+      ▼
+Create session (JWT)
+      │
+      ▼
+All API requests require valid session
+      │
+      ▼
+Extract userId from session.user.id
+```
+
+#### Two-Tier Credential System
+
+**Tier 1: Backend Credentials** (Vercel Environment Variables)
+- Our API keys (OpenAI, Anthropic, fal.ai)
+- Same for all users
+- Power the AI generation services
+
+**Tier 2: User Credentials** (Database, Encrypted)
+- User's GitHub token (for publishing to their repos)
+- Optional: Twitter, LinkedIn, Mastodon tokens
+- Encrypted with AES-256-GCM before storage
+
+#### Encryption Implementation
 
 ```typescript
-// After LLM call
-logger.trackTokens({
-  input: 500,
-  output: 1200,
-  model: 'gpt-4o-mini',
-  cost: 0.00025  // optional
+// src/lib/crypto/encryption.ts
+
+import crypto from 'crypto';
+
+const ALGORITHM = 'aes-256-gcm';
+const KEY = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex'); // 32 bytes
+
+export function encryptToJSON(plaintext: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+
+  let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
+  ciphertext += cipher.final('hex');
+
+  const authTag = cipher.getAuthTag();
+
+  return JSON.stringify({
+    ciphertext,
+    iv: iv.toString('hex'),
+    authTag: authTag.toString('hex')
+  });
+}
+
+export function decryptFromJSON(encryptedJSON: string): string {
+  const { ciphertext, iv, authTag } = JSON.parse(encryptedJSON);
+
+  const decipher = crypto.createDecipheriv(
+    ALGORITHM,
+    KEY,
+    Buffer.from(iv, 'hex')
+  );
+  decipher.setAuthTag(Buffer.from(authTag, 'hex'));
+
+  let plaintext = decipher.update(ciphertext, 'hex', 'utf8');
+  plaintext += decipher.final('utf8');
+
+  return plaintext;
+}
+```
+
+**Key generation**:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+#### Usage Tracking Schema
+
+```sql
+CREATE TABLE usage_tracking (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  free_expansions_remaining INT DEFAULT 5,
+  expansion_count INT DEFAULT 0,
+  total_paid_expansions INT DEFAULT 0
+);
+
+CREATE TABLE payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  stripe_payment_intent_id TEXT UNIQUE NOT NULL,
+  amount_cents INT NOT NULL,
+  expansions_purchased INT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'refunded'))
+);
+
+CREATE TABLE expansion_credits (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  payment_id UUID REFERENCES payments(id),
+  credits INT NOT NULL,
+  credits_remaining INT NOT NULL
+);
+```
+
+---
+
+## Performance Optimization
+
+### Current Performance Metrics
+
+| Operation | Duration | Bottleneck |
+|-----------|----------|------------|
+| Blog expansion (total) | 10-30s | Image generation (6-15s) |
+| Code expansion (0 iters) | 8-15s | Code generation (5-8s) |
+| Code expansion (2 iters) | 25-45s | Multiple generation + review cycles |
+
+### Optimization Strategies
+
+#### 1. Parallel Image Generation
+
+**Before**:
+```typescript
+for (const cell of cells) {
+  if (cell.cellType === 'image') {
+    cell.imageUrl = await generateImage(cell.caption);  // Sequential!
+  }
+}
+```
+
+**After**:
+```typescript
+const imagePromises = cells
+  .filter(c => c.cellType === 'image')
+  .map(cell => generateImage(cell.caption));
+
+const images = await Promise.all(imagePromises);  // Parallel!
+
+cells.forEach((cell, i) => {
+  if (cell.cellType === 'image') {
+    cell.imageUrl = images[imageIndex++];
+  }
 });
-
-// At pipeline end
-const totalTokens = logger.getTotalTokens();
-// Returns: { input: 2500, output: 5600, total: 8100 }
 ```
 
-### Performance Metrics
+**Improvement**: 3 images: 15s → 5s (67% faster)
 
-Each logger tracks execution duration:
+#### 2. Streaming Responses (Future)
+
+Currently, user waits for entire pipeline to complete. With streaming:
 
 ```typescript
-const logger = createLogger({ stage: 'blog-creator' });
-// ... work happens ...
-const duration = logger.getDuration();  // milliseconds since creation
+// Server-Sent Events (SSE)
+async function* streamExpansion(ideaId: string) {
+  yield { stage: 'router', status: 'complete', data: { format: 'blog_post' } };
+  yield { stage: 'planning', status: 'complete', data: { sections: 5 } };
+  yield { stage: 'generation', status: 'running', progress: 30 };
+  yield { stage: 'generation', status: 'complete', data: { wordCount: 1847 } };
+  yield { stage: 'images', status: 'running', progress: 66 };
+  yield { stage: 'images', status: 'complete', data: { count: 3 } };
+  yield { stage: 'review', status: 'complete', data: { score: 88 } };
+}
 ```
 
-### Emoji Quick Reference
+**Benefit**: User sees progress in real-time, perceived speed improvement
 
-Logs use emojis for quick visual scanning. Here are the key ones:
+#### 3. Caching Strategies
 
-**Pipeline Flow:**
-- 📥 Request received (API) → 🚀 Pipeline starting → 📊 Judging ideas → 🎯 Routing format
-- 📝 Blog creation | 🦣 Thread creation | 💻 Code creation
-
-**Creator Stages:**
-- 📋 Planning → 🛠️ Generation → 🔍 Review → 🔄 Iteration (code only)
-- 🎨 Image generation (within blogs/threads)
-
-**Status:**
-- ✅ Success | ❌ Error | ⚠️ Warning | 💾 Saved
-- 💰 Token usage | 🐛 Issues found
-
-**Pro tip:** Search logs by emoji to jump to specific stages (e.g., search "🔍" to see all reviews).
-
----
-
-## Output Structure
-
-All generated content follows a **cell-based notebook format**, inspired by Jupyter notebooks. This makes outputs:
-- **Structured**: Clear separation of content types
-- **Portable**: Easy to transform to different formats
-- **Traceable**: Each cell has metadata
-
-**Cell Types:**
+**Model response caching** (future):
 ```typescript
-// Markdown cells: Headers, paragraphs, lists, quotes
-{ cellType: 'markdown', blocks: [...] }
+const cacheKey = `plan:${hashIdea(idea)}`;
+const cached = await redis.get(cacheKey);
 
-// Code cells: Executable code lines
-{ cellType: 'code', language: 'python', lines: [...] }
+if (cached) {
+  return JSON.parse(cached);  // Instant!
+}
 
-// Image cells: Generated images with captions
-{ cellType: 'image', url: '...', caption: '...', alt: '...' }
+const plan = await planningAgent(idea);
+await redis.setex(cacheKey, 3600, JSON.stringify(plan));  // Cache 1 hour
+return plan;
 ```
 
-**Philosophy: "Atoms, not strings"**
-Instead of dumping raw markdown, the LLM must structure content into atomic blocks (h1, h2, paragraph, bulletList, etc.). This forces better structure and makes validation easy.
-
-**Files:** `src/lib/db/types.ts` (output interfaces), `src/lib/agents/types.ts` (creator schemas)
+**Image caching**:
+- Store generated images in Supabase Storage
+- Reuse similar images across blog posts
+- User-facing "image library"
 
 ---
 
-## Testing
+## Future Production Architecture
 
-### Manual Testing
+### Scalability Roadmap
 
-1. **Test Blog Creation:**
-```bash
-# Create idea
-curl -X POST http://localhost:3000/api/ideas \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "The Psychology of Color in UI Design"}'
+#### Phase 2: Production Deployment (Weeks 1-4)
 
-# Trigger expansion
-curl -X POST http://localhost:3000/api/expand \
-  -H 'Content-Type: application/json' \
-  -d '{"ideaId": "..."}'
+```
+Current: Localhost with TEST_USER_ID
+   │
+   ▼
+Phase 2.1: NextAuth + GitHub OAuth
+   - Real user authentication
+   - Session management
+   - User-specific data isolation
+   │
+   ▼
+Phase 2.2: Encryption Module
+   - Secure credential storage
+   - GitHub token encryption
+   - Key rotation support
+   │
+   ▼
+Phase 2.3: Usage Tracking + Stripe
+   - 5 free expansions per user
+   - $1/expansion after that
+   - Bundle discounts (10 for $8, 25 for $18.75, 50 for $35)
+   - Stripe checkout integration
+   │
+   ▼
+Phase 2.4: Vercel Production Deployment
+   - Environment variable management
+   - Database migrations
+   - Monitoring setup
 ```
 
-2. **Test Code Creation:**
-```bash
-# Create code-oriented idea
-curl -X POST http://localhost:3000/api/ideas \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "Build a sentiment analysis tool using transformers"}'
+#### Phase 3: Advanced Features (Months 2-3)
 
-# Trigger expansion (should route to github_repo)
-curl -X POST http://localhost:3000/api/expand \
-  -H 'Content-Type: application/json' \
-  -d '{"ideaId": "..."}'
+```
+- Real-time streaming (SSE)
+- Image library + reuse
+- Blog editing interface (cell-level edits)
+- Multi-platform social posts (LinkedIn, Mastodon)
+- Code testing pipeline (E2B sandboxing)
+- Version control for iterations
 ```
 
-3. **Check Output:**
-- Navigate to `http://localhost:3000/outputs`
-- Click on generated output
-- Verify format, quality, images (for blogs)
+#### Phase 4: Scale Optimization (Month 4+)
 
-### Automated Testing (Future)
-
-Suggested test cases:
-- Router decision accuracy (blog vs code vs thread)
-- Planning agent schema validation
-- Review scoring consistency
-- Image generation reliability
-- Iteration loop termination
-
----
-
-## Future Enhancements
-
-### Short-term (Next 2 Weeks)
-1. ✅ Add cell-based architecture to blog creator
-2. ✅ Integrate social share generation into blog pipeline
-3. ✅ Add metrics dashboard (iteration counts, scores, costs)
-4. ✅ Fine-tune quality rubrics based on real data
-
-### Medium-term (Next Month)
-1. Human-in-the-loop approval for plans (before generation)
-2. A/B testing for different prompts/models
-3. Caching for expensive operations (image generation)
-4. Batch processing for multiple ideas
-
-### Long-term (Next Quarter)
-1. Custom rubrics per user/project
-2. Learning from user feedback (preference learning)
-3. Multi-modal outputs (video, audio, interactive demos)
-4. Integration with more platforms (LinkedIn, Medium, Dev.to)
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue: "Module not found: @langchain/google-genai"**
-```bash
-# Fix:
-npm install @langchain/google-genai --legacy-peer-deps
+```
+- Redis caching layer
+- Background job queue (BullMQ)
+- Rate limiting (per-user quotas)
+- CDN for generated images
+- Horizontal scaling (Vercel Edge Functions)
 ```
 
-**Issue: Blog creation taking > 2 minutes**
-- Expected for blogs with 3 images (image generation is slow)
-- Check fal.ai API key is valid
-- Consider reducing image count in planning stage
+### Infrastructure Stack (Production)
 
-**Issue: Router always chooses github_repo**
-- Check idea wording - avoid ML/AI keywords if you want blog
-- Add explicit "blog post" or "article" to idea description
-- Router prefers code for technical topics (by design)
+| Component | Service | Cost |
+|-----------|---------|------|
+| **Hosting** | Vercel Pro | $20/month |
+| **Database** | Supabase Pro | $25/month |
+| **Authentication** | NextAuth (self-hosted) | Free |
+| **Payments** | Stripe | 3.5% + $0.30/transaction |
+| **Image Storage** | Supabase Storage | $25/month (included) |
+| **Monitoring** | Vercel Analytics | $10/month |
+| **Email** | Resend | $20/month (10k emails) |
+| **Total Fixed** | | $75/month |
 
-**Issue: Code review scores always low**
-- Check quality rubric criteria (may be too strict)
-- Adjust thresholds in code-creator.ts
-- Review critic-agent.ts prompts
+**Variable Costs** (per expansion):
+- AI APIs: $0.02-0.04
+- Stripe fee: $0.30-0.53 (if paid)
+- Infrastructure: ~$0.01
+- **Total**: $0.03-0.06
+
+**Profit Margin**:
+- Single expansion ($1): ~$0.40-0.67 profit (40-67%)
+- Bundle 10 ($8): ~$2.50-3.50 profit (31-44%)
+- Bundle 50 ($35): ~$13-17 profit (37-49%)
+
+**Break-even**: ~150 paid expansions/month
 
 ---
 
-## Additional Resources
+## Appendix: File Reference
 
-- **LangChain Docs:** https://js.langchain.com/docs
-- **Anthropic API:** https://docs.anthropic.com/en/api/getting-started
-- **Zod Schemas:** https://zod.dev/
-- **Structured Outputs:** https://js.langchain.com/docs/integrations/chat/structured_output
+### Core Files
+
+| File | Purpose | Lines of Code |
+|------|---------|---------------|
+| `src/lib/agents/graph.ts` | LangGraph orchestrator | ~80 |
+| `src/lib/agents/router-agent.ts` | Format routing | ~100 |
+| `src/lib/agents/creator-agent.ts` | Creator routing | ~50 |
+| `src/lib/agents/creators/blog/blog-creator.ts` | Blog pipeline | ~350 |
+| `src/lib/agents/creators/blog/blog-schemas.ts` | Zod schemas | ~200 |
+| `src/lib/agents/creators/code/code-creator.ts` | Code pipeline | ~500 |
+| `src/app/api/expand/route.ts` | Expansion API | ~150 |
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `.env.local` | API keys, database credentials |
+| `tsconfig.json` | TypeScript configuration |
+| `next.config.js` | Next.js configuration |
+| `scripts/setup-db.sql` | Database schema |
 
 ---
 
-**Last Updated:** January 22, 2026
-**Version:** 2.1 (Consolidated Documentation + Codebase Cleanup)
+**Last Updated**: January 22, 2026
+**Version**: V3 (Cell-Based Architecture)
+**Status**: Development (localhost) → Production deployment planned
+
+For questions or contributions, see [README.md](./README.md)
