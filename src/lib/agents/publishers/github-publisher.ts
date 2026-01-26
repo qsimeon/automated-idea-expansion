@@ -12,6 +12,8 @@
 
 import { Octokit } from '@octokit/rest';
 import type { GeneratedCode } from '../creators/code/types';
+import { supabaseAdmin } from '../../db/supabase';
+import { decryptFromJSON } from '../../crypto/encryption';
 
 /**
  * Result of publishing to GitHub
@@ -24,53 +26,124 @@ export interface GitHubPublishResult {
 }
 
 /**
+ * Get user's GitHub credentials for publishing to their own account
+ *
+ * SECURITY: Each user has their own encrypted GitHub token stored in the database.
+ * We retrieve and decrypt it to publish repos to the user's GitHub account.
+ *
+ * @param userId - User ID
+ * @returns Object with decrypted token and username
+ * @throws Error if user hasn't authenticated with GitHub
+ */
+export async function getUserGitHubCredentials(userId: string): Promise<{ token: string; username: string }> {
+  // Get user's GitHub token from credentials table
+  const { data: credential, error: credentialError } = await supabaseAdmin
+    .from('credentials')
+    .select('encrypted_value')
+    .eq('user_id', userId)
+    .eq('provider', 'github')
+    .single();
+
+  if (credentialError || !credential) {
+    throw new Error(
+      'GitHub token not found. User must sign in with GitHub to publish repos to their own account.'
+    );
+  }
+
+  // Decrypt the token
+  let gitHubToken: string;
+  try {
+    gitHubToken = decryptFromJSON(credential.encrypted_value);
+  } catch (error) {
+    throw new Error('Failed to decrypt GitHub token. Please re-authenticate with GitHub.');
+  }
+
+  // Get user's GitHub username from the user profile
+  // (This is stored when they first authenticate via OAuth)
+  const { data: user, error: userError } = await supabaseAdmin
+    .from('users')
+    .select('name')
+    .eq('id', userId)
+    .single();
+
+  if (userError || !user) {
+    throw new Error('User profile not found.');
+  }
+
+  // For now, use the name as fallback. In future, store GitHub login separately
+  // The GitHub login comes from the OAuth profile during auth.ts
+  // TODO: Store github_login field in users table for better reliability
+  const gitHubUsername = user.name || 'Unknown';
+
+  return {
+    token: gitHubToken,
+    username: gitHubUsername,
+  };
+}
+
+/**
  * Configuration for GitHub publishing
  */
 interface GitHubConfig {
-  token: string;        // GitHub Personal Access Token
-  username: string;     // GitHub username
+  token: string;        // GitHub Personal Access Token (per-user)
+  username: string;     // GitHub username (per-user)
   makePrivate?: boolean; // Create private repo (default: false)
 }
 
 /**
- * Get GitHub configuration from environment variables
+ * Get GitHub configuration from user's stored credentials
+ *
+ * IMPORTANT: Each user's repos are published to THEIR OWN GitHub account,
+ * not the site owner's account. This is accomplished by:
+ * 1. Using the encrypted GitHub token stored in the 'credentials' table
+ * 2. Getting the user's GitHub username from their profile
+ *
+ * The OAuth token captured during sign-in (with 'public_repo' scope)
+ * gives us permission to create repos in the user's account.
  */
-function getGitHubConfig(): GitHubConfig {
-  const token = process.env.GITHUB_TOKEN;
-  const username = process.env.GITHUB_USERNAME;
-
-  if (!token) {
-    throw new Error('GITHUB_TOKEN environment variable not set');
+function getGitHubConfig(userGitHubToken: string, userGitHubUsername: string): GitHubConfig {
+  if (!userGitHubToken) {
+    throw new Error(
+      'GitHub token not found. User must sign in with GitHub OAuth to publish repos. '
+      + 'Repos will be created in the user\'s own GitHub account, not the site owner\'s.'
+    );
   }
 
-  if (!username) {
-    throw new Error('GITHUB_USERNAME environment variable not set');
+  if (!userGitHubUsername) {
+    throw new Error('GitHub username not found. Check that GitHub OAuth profile was captured.');
   }
 
   return {
-    token,
-    username,
-    makePrivate: process.env.GITHUB_MAKE_PRIVATE === 'true',
+    token: userGitHubToken,
+    username: userGitHubUsername,
+    makePrivate: false, // Always public for now
   };
 }
 
 /**
  * Publish generated code project to GitHub
  *
+ * SECURITY: Each user publishes to their OWN GitHub account
+ *
  * @param project - Generated code project with files
  * @param userId - User ID (for logging/tracking)
+ * @param userGitHubToken - User's encrypted GitHub token (from credentials table)
+ * @param userGitHubUsername - User's GitHub username (from OAuth profile)
  * @returns Repository details including URL
  */
 export async function publishToGitHub(
   project: GeneratedCode,
-  userId: string
+  userId: string,
+  userGitHubToken: string,
+  userGitHubUsername: string
 ): Promise<GitHubPublishResult> {
-  console.log('\n🚀 === GITHUB PUBLISHER ===');
+  console.log('\n🚀 === GITHUB PUBLISHER (USER\'S GITHUB) ===');
+  console.log(`   Owner: ${userGitHubUsername}`);
   console.log(`   Repository: ${project.repoName}`);
   console.log(`   Files: ${project.files.length}`);
 
-  // Get configuration
-  const config = getGitHubConfig();
+  // Get configuration (per-user)
+  const config = getGitHubConfig(userGitHubToken, userGitHubUsername);
 
   // Initialize Octokit client
   const octokit = new Octokit({
@@ -112,11 +185,11 @@ export async function publishToGitHub(
       console.log(`   Retrying with name: ${newName}`);
 
       project.repoName = newName;
-      return await publishToGitHub(project, userId);
+      return await publishToGitHub(project, userId, userGitHubToken, userGitHubUsername);
     }
 
     if (error.status === 401) {
-      throw new Error('GitHub authentication failed. Check GITHUB_TOKEN environment variable.');
+      throw new Error('GitHub authentication failed. User\'s GitHub token may have expired. Please re-authenticate with GitHub.');
     }
 
     if (error.status === 403) {

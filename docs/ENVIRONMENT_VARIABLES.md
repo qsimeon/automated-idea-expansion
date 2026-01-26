@@ -109,22 +109,29 @@ cp .env.example .env.local
 
 ## Optional Variables
 
-### GitHub Publishing (For Code Output Distribution)
+### GitHub Publishing (Automatic - No Additional Setup!)
 
-**`GITHUB_TOKEN`** _(Optional - required to publish code repos)_
-- **Description**: GitHub Personal Access Token for publishing code
-- **How to create**:
-  1. https://github.com/settings/tokens
-  2. Click "Generate new token"
-  3. Scope: `public_repo` (for public repo creation)
-  4. Copy token (only shown once!)
-- **Used in**: Publishing generated code repositories
-- **Behavior if missing**: Code generation works, but repos not auto-published
+**GitHub Publishing is AUTOMATIC and PER-USER:**
 
-**`GITHUB_USERNAME`** _(Optional - required to publish code repos)_
-- **Description**: Your GitHub username (for publishing repos)
-- **Example**: `quilee`
-- **Used in**: Creating repos under your account
+✅ **Each user publishes to their OWN GitHub account** (not the site owner's!)
+
+How it works:
+1. User signs in with GitHub OAuth (`GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` above)
+2. OAuth automatically captures user's access token with `public_repo` scope
+3. Token is encrypted and stored in database (credentials table)
+4. When user generates code, repos are created in the USER'S GitHub account
+5. No additional environment variables needed!
+
+**Why this is better:**
+- ✅ Each user owns their generated repositories
+- ✅ Site owner doesn't see user's private GitHub activity
+- ✅ No additional API tokens to manage
+- ✅ Secure: tokens are encrypted at rest
+- ✅ Automatic: no user action required beyond OAuth sign-in
+
+**DEPRECATED (No longer needed):**
+- ❌ `GITHUB_TOKEN` - Not used (we use per-user OAuth tokens)
+- ❌ `GITHUB_USERNAME` - Not used (each user is their own "owner")
 
 ### Image Generation (For Blog Posts)
 

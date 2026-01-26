@@ -2,7 +2,7 @@ import type { AgentStateType } from './types';
 import type { Logger } from '../logging/logger';
 import { createBlog } from './creators/blog/blog-creator'; // Cell-based with images and social share
 import { createCodeProject } from './creators/code/code-creator'; // Multi-stage code creator
-import { publishToGitHub, publishToGitHubDryRun } from './publishers/github-publisher';
+import { publishToGitHub, publishToGitHubDryRun, getUserGitHubCredentials } from './publishers/github-publisher';
 
 /**
  * CREATOR AGENT (Orchestrator)
@@ -81,24 +81,36 @@ export async function creatorAgent(
           hasContent: !!codeResult.content,
         });
 
-        // Publish to GitHub (or dry run if environment variables not set)
+        // Publish to GitHub using USER's credentials (not site owner's)
         let publishResult = null;
-        const isDryRun = !process.env.GITHUB_TOKEN || !process.env.GITHUB_USERNAME;
+        let isDryRun = false;
 
-        if (isDryRun) {
-          logger.warn('GitHub credentials not found - running in DRY RUN mode', {
-            missingToken: !process.env.GITHUB_TOKEN,
-            missingUsername: !process.env.GITHUB_USERNAME,
+        try {
+          // Get user's GitHub credentials from database
+          const userGitHubCreds = await getUserGitHubCredentials(state.userId);
+          logger.info('Publishing to GitHub (user\'s own account)', {
+            username: userGitHubCreds.username,
           });
-          logger.info('Publishing to GitHub (dry run)');
-          publishResult = await publishToGitHubDryRun(codeResult.content, state.userId);
-          logger.info('GitHub dry run completed');
-        } else {
-          logger.info('Publishing to GitHub');
-          publishResult = await publishToGitHub(codeResult.content, state.userId);
-          logger.info('GitHub publishing completed successfully', {
+          publishResult = await publishToGitHub(
+            codeResult.content,
+            state.userId,
+            userGitHubCreds.token,
+            userGitHubCreds.username
+          );
+          logger.info('GitHub publishing completed successfully - repo in user\'s account', {
             published: true,
+            repoUrl: publishResult.repoUrl,
           });
+        } catch (githubError) {
+          // If user hasn't authenticated with GitHub, run dry run instead
+          logger.warn('User GitHub credentials not available - running in DRY RUN mode', {
+            error: githubError instanceof Error ? githubError.message : 'Unknown error',
+            reason: 'User must sign in with GitHub OAuth to enable automated repo publishing',
+          });
+          isDryRun = true;
+          logger.info('Publishing to GitHub (dry run - no actual repo created)');
+          publishResult = await publishToGitHubDryRun(codeResult.content, state.userId);
+          logger.info('GitHub dry run completed - code generated but not published');
         }
 
         return {
