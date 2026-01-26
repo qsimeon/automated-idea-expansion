@@ -31,10 +31,10 @@ import { z } from 'zod';
  * }
  */
 export const ReadmeFeatureSchema = z.object({
-  title: z.string().min(2).max(50)
-    .describe('Feature name (2-50 chars, e.g., "Real-time Updates", "Dark Mode")'),
-  description: z.string().min(10).max(200)
-    .describe('What does this feature do? (10-200 chars, clear and concise)'),
+  title: z.string().min(2).max(100)
+    .describe('Feature name (2-100 chars)'),
+  description: z.string().min(5).max(300)
+    .describe('What does this feature do? (5-300 chars)'),
 });
 
 export type ReadmeFeature = z.infer<typeof ReadmeFeatureSchema>;
@@ -72,14 +72,14 @@ export type ReadmeInstallationStep = z.infer<typeof ReadmeInstallationStepSchema
  * }
  */
 export const ReadmeUsageExampleSchema = z.object({
-  title: z.string().min(3).max(50)
-    .describe('Example name (3-50 chars, e.g., "Basic Usage", "With Error Handling")'),
-  description: z.string().min(10).max(200)
-    .describe('What does this example show? (10-200 chars)'),
-  code: z.string().min(10).max(1000)
-    .describe('Valid code snippet in the project language (10-1000 chars, must be runnable)'),
-  expectedOutput: z.string().max(500).optional()
-    .describe('What the user should see when running the code (optional, 0-500 chars)'),
+  title: z.string().min(2).max(100)
+    .describe('Example name (2-100 chars)'),
+  description: z.string().min(3).max(300)
+    .describe('What does this example show? (3-300 chars)'),
+  code: z.string().min(5).max(2000)
+    .describe('Code snippet (5-2000 chars)'),
+  expectedOutput: z.string().max(1000).optional()
+    .describe('Expected output when running (optional, 0-1000 chars)'),
 });
 
 export type ReadmeUsageExample = z.infer<typeof ReadmeUsageExampleSchema>;
@@ -150,14 +150,14 @@ export type ReadmeDependency = z.infer<typeof ReadmeDependencySchema>;
  * Architecture Section: How the code is organized
  */
 export const ReadmeArchitectureSchema = z.object({
-  overview: z.string().min(20).max(500)
-    .describe('High-level explanation of how it works (20-500 chars, 2-3 sentences)'),
-  diagram: z.string().min(10).max(1000)
-    .describe('ASCII file tree or architecture diagram (10-1000 chars)'),
-  files: z.array(ReadmeFileSchema).min(1).max(20)
-    .describe('Explanation of important files (1-20 files)'),
-  designDecisions: z.array(z.string().min(10).max(200)).min(0).max(5)
-    .describe('Why were these architectural choices made? (0-5 decisions, 10-200 chars each)'),
+  overview: z.string().min(10).max(1000)
+    .describe('High-level explanation (10-1000 chars)'),
+  diagram: z.string().min(5).max(2000)
+    .describe('ASCII diagram or file tree (5-2000 chars)'),
+  files: z.array(ReadmeFileSchema).min(0).max(30)
+    .describe('File explanations (0-30 files)'),
+  designDecisions: z.array(z.string().min(5).max(300)).min(0).max(10)
+    .describe('Design rationale (0-10 decisions, 5-300 chars each)'),
 });
 
 export type ReadmeArchitecture = z.infer<typeof ReadmeArchitectureSchema>;
@@ -186,42 +186,42 @@ export type ReadmeTechnicalDetails = z.infer<typeof ReadmeTechnicalDetailsSchema
  */
 export const ReadmeSchema = z.object({
   // ===== HEADER SECTION =====
-  title: z.string().min(3).max(100)
-    .describe('Project title (3-100 chars, same as project name)'),
-  tagline: z.string().min(10).max(100)
-    .describe('One-line catchphrase (10-100 chars, what the project does in a nutshell)'),
-  description: z.string().min(50).max(500)
-    .describe('Longer overview (50-500 chars, 3-5 sentences explaining what problem it solves)'),
+  title: z.string().min(3).max(150)
+    .describe('Project title (3-150 chars)'),
+  tagline: z.string().min(10).max(200)
+    .describe('One-line catchphrase (10-200 chars, what the project does)'),
+  description: z.string().min(50).max(800)
+    .describe('Longer overview (50-800 chars, 3-5 sentences)'),
 
   // ===== FEATURES =====
-  features: z.array(ReadmeFeatureSchema).min(2).max(8)
-    .describe('Key capabilities of this project (2-8 features, must have at least 2)'),
+  features: z.array(ReadmeFeatureSchema).min(1).max(10)
+    .describe('Key capabilities (1-10 features, at least 1)'),
 
   // ===== INSTALLATION =====
-  prerequisites: z.array(z.string().min(5).max(100)).min(0).max(5)
-    .describe('Required software (0-5 items, e.g., "Python 3.10+", "Node.js 16+")'),
-  installationSteps: z.array(ReadmeInstallationStepSchema).min(1).max(10)
-    .describe('Step-by-step setup instructions (1-10 steps, must have at least 1)'),
+  prerequisites: z.array(z.string().min(3).max(150)).min(0).max(10)
+    .describe('Required software (0-10 items, e.g., "Python 3.7+")'),
+  installationSteps: z.array(ReadmeInstallationStepSchema).min(1).max(15)
+    .describe('Step-by-step setup (1-15 steps)'),
 
   // ===== USAGE =====
-  usageExamples: z.array(ReadmeUsageExampleSchema).min(2).max(5)
-    .describe('Concrete usage examples showing different features (2-5 examples)'),
+  usageExamples: z.array(ReadmeUsageExampleSchema).min(1).max(8)
+    .describe('Usage examples (1-8 examples)'),
 
   // ===== ARCHITECTURE =====
   architecture: ReadmeArchitectureSchema
-    .describe('Architecture and design explanation'),
+    .describe('Architecture and design'),
 
   // ===== TECHNICAL DETAILS =====
   technicalDetails: ReadmeTechnicalDetailsSchema
-    .describe('Technical implementation details'),
+    .describe('Technical details'),
 
   // ===== TROUBLESHOOTING =====
-  troubleshooting: z.array(ReadmeTroubleshootingSchema).min(1).max(5)
-    .describe('Common issues and how to solve them (1-5 items)'),
+  troubleshooting: z.array(ReadmeTroubleshootingSchema).min(1).max(8)
+    .describe('Troubleshooting guide (1-8 items)'),
 
   // ===== FOOTER =====
-  notes: z.string().max(300).optional()
-    .describe('Additional notes about the project (optional, 0-300 chars, e.g., license, credits, AI-generated)'),
+  notes: z.string().max(1000).optional()
+    .describe('Additional notes (optional, 0-1000 chars)'),
 });
 
 export type Readme = z.infer<typeof ReadmeSchema>;

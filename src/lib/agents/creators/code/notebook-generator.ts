@@ -218,7 +218,6 @@ export async function generateNotebook(
             result.cells
           );
           files.push(...generatedModules);
-          console.log(`   ✅ Generated ${generatedModules.length} module file(s)`);
         }
       }
 
@@ -457,8 +456,6 @@ function generateRepoName(idea: { title: string; description: string | null }): 
 /**
  * GENERATE CRITICAL PYTHON MODULES
  *
- * Task 2.2: Multi-File Architecture Enforcement
- *
  * The plan specifies critical Python module files that should be generated.
  * This function generates them using schema-driven structured output.
  *
@@ -471,63 +468,72 @@ async function generateCriticalModules(
   requiredPackages: string[],
   notebookCells: any[]
 ): Promise<CodeFile[]> {
-  try {
-    const model = new ChatAnthropic({
-      modelName: 'claude-sonnet-4-5-20250929',
-      temperature: 0.3,
-    });
+  const model = new ChatAnthropic({
+    modelName: 'claude-sonnet-4-5-20250929',
+    temperature: 0.3,
+  });
 
-    const structuredModel = model.withStructuredOutput(MultipleFilesSchema);
+  const structuredModel = model.withStructuredOutput(MultipleFilesSchema);
 
-    const cellSummary = notebookCells
-      .filter((c: any) => c.cellType === 'code')
-      .slice(0, 3)
-      .map((c: any) => c.lines.map((l: any) => l.code).join('\n').substring(0, 100))
-      .join('\n');
+  // Extract key algorithms from notebook cells
+  const cellSummary = notebookCells
+    .filter((c: any) => c.cellType === 'code')
+    .slice(0, 5)
+    .map((c: any) => c.lines.map((l: any) => l.code).join('\n').substring(0, 150))
+    .join('\n---\n');
 
-    const prompt = `Generate the following Python module files for this project:
-Project: "${idea.title}"
-${idea.description ? `Description: ${idea.description}` : ''}
+  const prompt = `You MUST generate Python module files for this project.
 
-Files to create:
-${filePathsToCreate.map(f => `- ${f}`).join('\n')}
+PROJECT: "${idea.title}"
+${idea.description ? `DESCRIPTION: ${idea.description}` : ''}
 
-These modules should:
-1. Work together as a cohesive system
-2. Be importable from each other
-3. Implement the algorithms shown in the notebook cells:
+REQUIRED FILES TO GENERATE:
+${filePathsToCreate.map((f, i) => `${i + 1}. ${f}`).join('\n')}
 
+DEPENDENCIES AVAILABLE: ${requiredPackages.length > 0 ? requiredPackages.join(', ') : 'numpy, scipy, matplotlib'}
+
+KEY ALGORITHMS FROM NOTEBOOK:
 ${cellSummary}
 
-Generate COMPLETE, working code for each file. Each file should:
-- Have proper imports
-- Include docstrings
-- Be production-ready
-- Work with these dependencies: ${requiredPackages.join(', ') || 'numpy, scipy'}
+YOUR TASK:
+Generate COMPLETE, production-ready Python code for EACH file listed above.
 
-Return the files as JSON with this structure:
+REQUIREMENTS FOR EACH FILE:
+- Must be valid, executable Python code
+- Must have proper imports at the top
+- Must include module-level docstrings
+- Must be designed to work together (imports between files are OK)
+- Must implement the algorithms shown above
+- No placeholder code - COMPLETE implementations only
+
+RESPONSE FORMAT - YOU MUST RETURN EXACTLY THIS STRUCTURE:
 {
   "files": [
-    { "path": "rnn_energy/core.py", "content": "..." },
-    { "path": "rnn_energy/solver.py", "content": "..." },
-    ...
+    {
+      "path": "${filePathsToCreate[0]}",
+      "content": "# Complete Python code here..."
+    },
+    {
+      "path": "${filePathsToCreate[1]}",
+      "content": "# Complete Python code here..."
+    }
   ]
-}`;
+}
 
-    const result = await structuredModel.invoke(prompt);
+CRITICAL: Return exactly ${filePathsToCreate.length} files with the paths listed above. Do NOT simplify or skip files.`;
 
-    // Convert to CodeFile format
-    const codeFiles: CodeFile[] = result.files.map(f => ({
-      path: f.path,
-      content: f.content,
-      language: 'python',
-    }));
+  const result = await structuredModel.invoke(prompt);
 
-    return codeFiles;
-  } catch (error) {
-    console.error('⚠️  Failed to generate critical modules:', error instanceof Error ? error.message : error);
-    return []; // Return empty array - the notebook is still valid without modules
-  }
+  // Convert to CodeFile format
+  const codeFiles: CodeFile[] = result.files.map((f: any) => ({
+    path: f.path,
+    content: f.content,
+    language: 'python',
+  }));
+
+  console.log(`   ✅ Generated ${codeFiles.length}/${filePathsToCreate.length} critical module(s)`);
+
+  return codeFiles;
 }
 
 /**
@@ -596,67 +602,16 @@ Generate a professional README that includes:
 Make the README engaging and educational - this is a learning tool!
 Focus on making the project understandable to someone new to the topic.`;
 
-  try {
-    const readme = await structuredModel.invoke(prompt);
+  const readme = await structuredModel.invoke(prompt);
 
-    // Validate the structure (Zod will throw if invalid)
-    console.log(`  📖 README schema validated`);
-    console.log(`     - Features: ${readme.features.length}`);
-    console.log(`     - Installation steps: ${readme.installationSteps.length}`);
-    console.log(`     - Usage examples: ${readme.usageExamples.length}`);
-    console.log(`     - Troubleshooting items: ${readme.troubleshooting.length}`);
+  // Validate the structure (Zod will throw if invalid)
+  console.log(`  📖 README schema validated`);
+  console.log(`     - Features: ${readme.features.length}`);
+  console.log(`     - Installation steps: ${readme.installationSteps.length}`);
+  console.log(`     - Usage examples: ${readme.usageExamples.length}`);
+  console.log(`     - Troubleshooting items: ${readme.troubleshooting.length}`);
 
-    // Render to markdown
-    return renderReadmeToMarkdown(readme);
-  } catch (error) {
-    // Log detailed error for debugging
-    console.error('⚠️  README schema validation failed');
-    if (error instanceof Error) {
-      console.error(`   Error: ${error.message}`);
-      if (error.message.includes('OUTPUT_PARSING_FAILURE')) {
-        console.error('   Reason: Claude returned incomplete or malformed JSON');
-        console.error('   Falling back to template-based README');
-      }
-    }
-    // Fallback to simple template if schema generation fails
-    return generateReadmeFallback(context.idea, context.packages);
-  }
+  // Render to markdown
+  return renderReadmeToMarkdown(readme);
 }
 
-/**
- * FALLBACK: Simple template-based README if AI generation fails
- * This ensures we always have a README, even if the advanced generation breaks
- */
-function generateReadmeFallback(
-  idea: { title: string; description: string | null },
-  packages: string[]
-): string {
-  return `# ${idea.title}
-
-${idea.description || 'A Jupyter notebook for data analysis and experimentation.'}
-
-## Setup
-
-\`\`\`bash
-pip install ${packages.length > 0 ? packages.join(' ') : 'jupyter'}
-\`\`\`
-
-## Usage
-
-Open the notebook in Jupyter Lab:
-
-\`\`\`bash
-jupyter lab notebook.ipynb
-\`\`\`
-
-Or upload to [Google Colab](https://colab.research.google.com/).
-
-## Requirements
-
-${packages.length > 0 ? packages.map((pkg) => `- ${pkg}`).join('\n') : '- jupyter'}
-
-## Notes
-
-This notebook was automatically generated using Claude Sonnet 4.5 with atomic structured outputs.
-`;
-}
