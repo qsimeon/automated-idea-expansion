@@ -9,16 +9,24 @@
 
 import { signIn } from 'next-auth/react';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
+
+  // Get callbackUrl from query params (set by middleware)
+  const callbackUrl = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('callbackUrl') || '/ideas'
+    : '/ideas';
 
   const handleSignIn = async () => {
     setIsLoading(true);
     try {
       // Redirect to GitHub OAuth
+      // The callbackUrl comes from middleware (which was triggered when user tried to access protected route)
       await signIn('github', {
-        callbackUrl: '/ideas', // Redirect here after successful sign-in
+        callbackUrl: callbackUrl, // Redirect back to original page after sign-in
       });
     } catch (error) {
       console.error('Sign-in error:', error);
