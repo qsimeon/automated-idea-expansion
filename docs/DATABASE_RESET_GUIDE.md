@@ -67,7 +67,10 @@ DELETE FROM users WHERE email != 'YOUR_EMAIL';
 
 -- Step 4: Reset your usage to 100 credits
 UPDATE usage_tracking
-SET paid_credits_remaining = 100, ...
+SET
+  free_expansions_remaining = 0,
+  paid_credits_remaining = 100,
+  total_expansions_used = 0
 WHERE user_id = (SELECT id FROM users WHERE email = 'YOUR_EMAIL');
 
 -- Step 5: Verify with counts
@@ -95,7 +98,7 @@ usage_tracking  | 1 (with 100 paid_credits_remaining)
 user_id: [your-id]
 free_expansions_remaining: 0        (already used 5 free)
 paid_credits_remaining: 100         (100 credits to start)
-total_expansions: 0                 (counter reset)
+total_expansions_used: 0            (counter reset)
 ```
 
 ---
@@ -195,7 +198,7 @@ SELECT
 
 ### See Your Credits
 ```sql
-SELECT user_id, free_expansions_remaining, paid_credits_remaining
+SELECT user_id, free_expansions_remaining, paid_credits_remaining, total_expansions_used
 FROM usage_tracking;
 ```
 

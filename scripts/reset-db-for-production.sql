@@ -48,7 +48,7 @@ UPDATE usage_tracking
 SET
   free_expansions_remaining = 0,        -- You've used all 5 free
   paid_credits_remaining = 100,         -- Start with 100 paid credits
-  total_expansions = 0,                 -- Reset counter
+  total_expansions_used = 0,            -- Reset counter
   updated_at = NOW()
 WHERE user_id = (
   SELECT id FROM users WHERE email = 'YOUR_EMAIL'
@@ -73,7 +73,7 @@ UNION ALL
 SELECT 'USAGE_TRACKING', COUNT(*) FROM usage_tracking;
 
 -- Check your usage specifically
-SELECT user_id, free_expansions_remaining, paid_credits_remaining, total_expansions
+SELECT user_id, free_expansions_remaining, paid_credits_remaining, total_expansions_used
 FROM usage_tracking
 WHERE user_id IN (SELECT id FROM users);
 
