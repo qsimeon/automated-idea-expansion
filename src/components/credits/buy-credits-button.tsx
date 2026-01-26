@@ -21,7 +21,8 @@ export function BuyCreditsButton({
   fullWidth?: boolean;
   className?: string;
 }) {
-  // TODO: Replace with your actual Buy Me a Coffee username
+  // Configuration: BMC_USERNAME can be set via environment variable
+  // Defaults to 'quilee' if not specified
   const BMC_USERNAME = process.env.NEXT_PUBLIC_BMC_USERNAME || 'quilee';
   const BMC_URL = `https://buymeacoffee.com/${BMC_USERNAME}`;
 
@@ -118,7 +119,7 @@ export function BuyCreditsButton({
  *
  * Displays at top of ideas page when totalRemaining === 0
  */
-export function NoCreditsRanner({
+export function NoCreditsWarning({
   freeUsed = 5,
   totalUsed = 5,
 }: {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { NoCreditsRanner } from '@/components/credits/buy-credits-button';
+import { NoCreditsWarning } from '@/components/credits/buy-credits-button';
 
 interface Idea {
   id: string;
@@ -194,7 +194,7 @@ export default function IdeasPage() {
 
       {/* No Credits Banner */}
       {!usageLoading && usage && usage.totalRemaining === 0 && (
-        <NoCreditsRanner
+        <NoCreditsWarning
           freeUsed={usage.freeUsed}
           totalUsed={usage.totalUsed}
         />

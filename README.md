@@ -4,7 +4,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 
 ## 🎯 Current Status
 
-**Phase 2C Complete!** ✅ Unified Content Pipeline + Images as Components
+**Production Ready!** ✅ Ready for Vercel Deployment
 
 ### ✅ What's Working:
 
@@ -40,9 +40,21 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 
 **Note:** Images and social posts are **components** of blogs, not standalone formats.
 
-### 🎉 Recent Accomplishments:
+### 🎉 Production-Ready Features:
 
-#### **Cell-Based Architecture & Model Optimization (Jan 2026) - LATEST**
+#### **Per-User GitHub Publishing (Jan 2026) - SECURITY FIX**
+- ✅ **Each user publishes to their own GitHub account** (not site owner's!)
+- ✅ User's OAuth token encrypted with AES-256-GCM
+- ✅ Automatic credential retrieval and decryption
+- ✅ Graceful fallback to dry-run if user hasn't authenticated
+
+#### **Database Reset for Production (Jan 2026)**
+- ✅ **One-command database reset** to clean production state
+- ✅ Preserves schema and RLS policies
+- ✅ Documented with step-by-step guide
+- ✅ Verified and tested for Vercel deployment
+
+#### **Cell-Based Architecture & Model Optimization (Jan 2026)**
 - ✅ **Cell-Based Blog Architecture** - Atomic content blocks:
   - MarkdownCell + ImageCell discriminated unions
   - No markdown string manipulation (schemas all the way down)
@@ -267,18 +279,6 @@ Example of a successful blog expansion:
 | `No pending ideas available` | All ideas already expanded | Add new ideas |
 | `GitHub credentials not found` | Missing GitHub token | Add to `.env.local` (optional) |
 
-### 🚧 What's Coming Next:
-
-#### **Phase 2C-D: Additional Publishers**
-- ✅ **GitHub Publisher** - Create actual repos with Octokit (COMPLETE!)
-- ⏳ **Mastodon Publisher** - Post real threads with masto.js
-- ⏳ **Blog Publisher** - Save to database with slug generation
-- ⏳ **Image Publisher** - Upload to Supabase Storage
-
-#### **Phase 2E-F: Interactive Code**
-- ⏳ E2B code sandboxing (run code in browser)
-- ⏳ Jupyter notebook support
-- ⏳ Vercel deployment integration
 
 ---
 
@@ -287,10 +287,10 @@ Example of a successful blog expansion:
 ### Prerequisites
 - Node.js 18+
 - Supabase account (free tier)
-- **OpenAI API key** (for GPT-5 Nano)
-- **Anthropic API key** (for Claude Sonnet 4.5)
-- **GitHub Personal Access Token** (for repo creation)
-- (Optional) Mastodon, fal.ai API keys for other formats
+- GitHub account (for OAuth)
+- **OpenAI API key** (for planning & review)
+- **Anthropic API key** (for code generation)
+- (Optional) FAL.ai, HuggingFace API keys for image generation
 
 ### Setup
 
@@ -306,45 +306,47 @@ Example of a successful blog expansion:
    - Run `scripts/setup-db.sql` in SQL Editor
    - Copy connection details to `.env.local`
 
-3. **Create test user:**
-   ```sql
-   INSERT INTO users (id, clerk_user_id, email, name, timezone)
-   VALUES (
-     '00000000-0000-0000-0000-000000000001'::uuid,
-     'test-user-123',
-     'test@example.com',
-     'Test User',
-     'UTC'
-   );
-   ```
+3. **Configure GitHub OAuth:**
+   - Go to https://github.com/settings/developers
+   - Create a new OAuth App
+   - Set callback URL to `http://localhost:3000/api/auth/callback/github`
+   - Copy Client ID and Client Secret to `.env.local`
 
-4. **Add API keys to `.env.local`:**
+4. **Test user account:**
+   - Users are created automatically on first GitHub OAuth sign-in
+   - No manual SQL insert needed!
+
+5. **Add API keys to `.env.local`:**
    ```bash
    # Supabase
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-   # AI Models (Required)
-   OPENAI_API_KEY=sk-proj-...           # For GPT-5 Nano (planning, routing, review)
-   ANTHROPIC_API_KEY=sk-ant-...         # For Claude Sonnet 4.5 (code generation)
+   # GitHub OAuth (from step 3)
+   GITHUB_CLIENT_ID=your_client_id
+   GITHUB_CLIENT_SECRET=your_client_secret
+   NEXTAUTH_SECRET=generated_secret
+   NEXTAUTH_URL=http://localhost:3000
+   ENCRYPTION_KEY=your_64_char_hex_string
 
-   # Publishing (Required for code projects)
-   GITHUB_TOKEN=github_pat_...          # Personal Access Token with repo scope
-   GITHUB_USERNAME=your_username
+   # AI Models (Required)
+   OPENAI_API_KEY=sk-proj-...           # For planning & review
+   ANTHROPIC_API_KEY=sk-ant-...         # For code generation
 
    # Image Generation (Optional)
    FAL_KEY=...
    HUGGINGFACE_API_KEY=hf_...
    REPLICATE_API_TOKEN=r8_...
    ```
+   See `docs/ENVIRONMENT_VARIABLES.md` for detailed setup.
 
-5. **Run development server:**
+6. **Run development server:**
    ```bash
    npm run dev
    ```
 
-6. **Use the app:**
+7. **Use the app:**
    - Visit http://localhost:3000/ideas
    - Add an idea: "Build a sentiment analysis CLI tool"
    - Click "Expand" on the idea you want to generate content for
@@ -672,24 +674,30 @@ This project teaches:
 
 ---
 
-## 🚧 Roadmap
+## 🚀 Roadmap
 
-### ✅ Completed
-- [x] Phase 1: Foundation (Next.js, Supabase, TypeScript)
-- [x] Phase 2: Ideas & Outputs Management
-- [x] Phase 4: Multi-Agent Pipeline (Judge, Router, Creator)
-- [x] Phase 2A: Multi-Stage Code Creator (Planning, Generation, Critic)
+### ✅ Production-Ready
+- [x] Authentication (GitHub OAuth + NextAuth)
+- [x] Multi-Agent Pipeline (Router → Creator)
+- [x] Blog Generation (4 stages with images)
+- [x] Code Generation (5 stages with quality gates)
+- [x] GitHub Publishing (per-user OAuth tokens)
+- [x] Credit System (5 free + paid)
+- [x] Database Persistence (Supabase PostgreSQL)
+- [x] Security (AES-256-GCM encryption, RLS policies)
 
-### 🔄 In Progress
-- [ ] Phase 2C: GitHub Publisher (Octokit)
-- [ ] Phase 2D: Mastodon Publisher (masto.js)
+### 📋 Post-Launch (Month 1-2)
+- [ ] Email notifications for purchases
+- [ ] Ability to edit/regenerate outputs
+- [ ] Additional output formats (Twitter threads, LinkedIn posts)
+- [ ] Referral system (free credits for referrals)
+- [ ] Advanced analytics dashboard
 
-### 📋 Planned
-- [ ] Phase 2E: Interactive Code (E2B sandboxing)
-- [ ] Phase 2F: Notebook Support (Binder integration)
-- [ ] Phase 7: Daily Automation (Vercel cron)
-- [ ] Phase 8: Dashboard & Analytics
-- [ ] Phase 9: Production Polish
+### 🚀 Future (Month 3+)
+- [ ] Team/organization accounts
+- [ ] Stripe integration (credit bundles)
+- [ ] API access for power users
+- [ ] Mobile app (React Native)
 
 ---
 
