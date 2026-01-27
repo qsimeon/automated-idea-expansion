@@ -84,7 +84,6 @@ export async function POST(request: Request) {
       content: body.content.trim(),
       title: body.title?.trim() || undefined,
       description: body.description?.trim() || undefined,
-      bullets: Array.isArray(body.bullets) ? body.bullets.filter((b: any) => typeof b === 'string' && b.trim()) : undefined,
     };
 
     // Generate AI summary (1-sentence title) for the idea

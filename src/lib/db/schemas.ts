@@ -19,7 +19,6 @@ export const IdeaSchema = z.object({
   title: z.string(),
   summary: z.string().nullable().describe("1-sentence AI-generated summary (max 150 chars)"),
   description: z.string().nullable(),
-  bullets: z.array(z.string()).default([]),
   status: z.enum(['pending', 'expanded', 'archived']),
   created_at: z.string(),
   updated_at: z.string(),

@@ -89,7 +89,6 @@ export async function createIdea(
       title,
       summary: summary || null, // AI-generated summary (optional)
       description,
-      bullets: input.bullets || [],
       status: 'pending',
     })
     .select()

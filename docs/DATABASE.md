@@ -12,10 +12,12 @@
 4. [Tables & Schema](#tables--schema)
 5. [Security (RLS Policies)](#security-rls-policies)
 6. [Usage Tracking & Credits](#usage-tracking--credits)
-7. [Management Scripts](#management-scripts)
-8. [Common Operations](#common-operations)
-9. [Backup & Recovery](#backup--recovery)
-10. [Troubleshooting](#troubleshooting)
+7. [Database Epoch System](#database-epoch-system)
+8. [Idea Summarization](#idea-summarization)
+9. [Management Scripts](#management-scripts)
+10. [Common Operations](#common-operations)
+11. [Backup & Recovery](#backup--recovery)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -301,10 +303,8 @@ CREATE TABLE users (
 CREATE TABLE ideas (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,
-  description TEXT,
-  bullets JSONB DEFAULT '[]'::jsonb,
-  external_links JSONB DEFAULT '[]'::jsonb,
+  title TEXT NOT NULL,           -- 1-sentence summary (AI-generated)
+  summary TEXT,                  -- Same as title (for display)
   status TEXT DEFAULT 'pending'
     CHECK (status IN ('pending', 'expanded', 'archived')),
   priority_score INTEGER DEFAULT 0
@@ -316,10 +316,16 @@ CREATE TABLE ideas (
 );
 ```
 
+**Key Fields:**
+- `title`: AI-generated 1-sentence summary (max 150 chars), set on idea creation
+- `summary`: Duplicate of title, stored for explicit display field
+- Full idea text is passed to AI agents but not stored (ephemeral)
+
 **Indexes:**
 - `idx_ideas_user_status`: Fast queries by user and status
 - `idx_ideas_created`: Sort by creation date
 - `idx_ideas_priority`: Sort by priority
+- `idx_ideas_summary`: Fast summary searches
 
 **RLS Policies:**
 - Users can view, create, update, delete only their own ideas
@@ -676,6 +682,153 @@ Expansion 10 → consume_expansion_credit() → free=0, paid=0
 User tries expand 11 → check_user_has_credits() → false
 → Show "Buy More Credits" button
 ```
+
+---
+
+## Database Epoch System
+
+### Problem: Stale JWT Tokens After Database Reset
+
+**Situation:** JWT tokens are stored in browser cookies (client-side), but database is server-side. When database resets, browser doesn't know and still has old JWT with deleted user ID, causing "foreign key constraint" errors.
+
+**Solution:** Store `database_version` in config table. JWT tokens include this version. When database resets, version increments, invalidating all tokens.
+
+### How It Works
+
+```
+1. User signs in
+   → Get current database_version from config table (e.g., v=1)
+   → JWT created with userId + dbVersion: 1
+   → Token stored in browser cookie
+
+2. User makes API request later
+   → JWT callback checks: token.dbVersion == current_version?
+   → YES → Token valid, proceed ✅
+   → NO → Database was reset, force re-login ❌
+
+3. Admin resets database
+   → Run: scripts/reset-db-with-epoch.sql
+   → Deletes all users (cascades)
+   → Increments database_version (1→2)
+   → All existing tokens now invalid
+   → Users must sign in again
+```
+
+### Setup
+
+**One-time migration:**
+```bash
+# In Supabase SQL Editor:
+# Copy scripts/migrate-add-config-and-summary.sql and run
+# Creates config table with database_version = 1
+```
+
+### Schema
+
+```sql
+CREATE TABLE config (
+  id SERIAL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,      -- 'database_version'
+  value TEXT NOT NULL,            -- '1'
+  updated_by TEXT DEFAULT 'system',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO config (key, value) VALUES ('database_version', '1');
+```
+
+### JWT Token
+
+```typescript
+interface JWT {
+  userId?: string;      // Database user ID
+  dbVersion?: number;   // Database epoch (new!)
+  // ... other NextAuth fields
+}
+```
+
+### Reset Database
+
+```bash
+# In Supabase SQL Editor:
+# Copy scripts/reset-db-with-epoch.sql and run
+
+# This:
+# - Deletes all users (cascades to ideas, outputs, etc.)
+# - Increments database_version
+# - Invalidates all JWT tokens
+# - Users must sign in again
+```
+
+---
+
+## Idea Summarization
+
+### What It Does
+
+When users save an idea, AI automatically generates a 1-sentence summary (max 150 chars) to use as the card title.
+
+**Before:**
+```
+Card title: "I want to explore different techniques for training AI models on limited budgets. Using quantized weights and distributed..."
+(First 100 chars, incomplete mid-sentence)
+```
+
+**After:**
+```
+Card title: "AI training on a budget: Quantization & distributed techniques" ← AI-generated
+Card body: (Full idea text)
+```
+
+### How It Works
+
+```
+1. User saves idea
+   POST /api/ideas { content: "long paragraph..." }
+
+2. Server calls ideaSummarizer()
+   → Claude Haiku generates 1-sentence summary
+   → Zod validates: 5-150 characters
+   → Returns: { summary: "short title" }
+
+3. Create idea in database
+   title = summary    ← AI-generated, short title
+   description = full content
+   summary = summary  ← Stored for queries
+
+4. Frontend displays
+   <h3>title</h3> ← bold summary
+   <p>description</p> ← full idea
+```
+
+### Schema
+
+**New column:**
+```sql
+ALTER TABLE ideas ADD COLUMN summary TEXT;
+CREATE INDEX idx_ideas_summary ON ideas(summary);
+```
+
+**Validation (Zod):**
+```typescript
+export const IdeaSummarySchema = z.object({
+  summary: z.string()
+    .min(5, "Min 5 chars")
+    .max(150, "Max 150 chars")
+});
+```
+
+### Models Used
+
+- **Primary:** Claude Haiku 4.5 (fast, cheap)
+- **Fallback:** GPT-4o-mini
+- **Method:** `.withStructuredOutput()` for guaranteed valid JSON
+- **Cost:** ~0.1 cents per summary
+- **Speed:** ~1 second
+
+### Error Handling
+
+If summarizer fails, idea is created WITHOUT summary (it's optional). App continues normally. Summary can be added manually later if needed.
 
 ---
 

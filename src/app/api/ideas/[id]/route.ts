@@ -104,19 +104,6 @@ export async function PUT(
       input.description = body.description?.trim() || null;
     }
 
-    if (body.bullets !== undefined) {
-      if (!Array.isArray(body.bullets)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Bullets must be an array',
-          },
-          { status: 400 }
-        );
-      }
-      input.bullets = body.bullets.filter((b: any) => typeof b === 'string' && b.trim());
-    }
-
     if (body.status !== undefined) {
       if (!['pending', 'expanded', 'archived'].includes(body.status)) {
         return NextResponse.json(
