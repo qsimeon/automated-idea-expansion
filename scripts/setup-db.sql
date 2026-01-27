@@ -5,20 +5,19 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================
--- USERS TABLE (synced from Clerk)
+-- USERS TABLE (NextAuth via GitHub OAuth)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  clerk_user_id TEXT UNIQUE NOT NULL,
-  email TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
   name TEXT,
   timezone TEXT DEFAULT 'UTC',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index for fast Clerk lookups
-CREATE INDEX IF NOT EXISTS idx_users_clerk_id ON users(clerk_user_id);
+-- Index for fast email lookups
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- ============================================================
 -- IDEAS TABLE
@@ -147,75 +146,75 @@ ALTER TABLE blog_posts ENABLE ROW LEVEL SECURITY;
 -- USERS: Users can only see their own record
 CREATE POLICY "Users can view own record"
   ON users FOR SELECT
-  USING (clerk_user_id = auth.jwt() ->> 'sub');
+  USING (id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can update own record"
   ON users FOR UPDATE
-  USING (clerk_user_id = auth.jwt() ->> 'sub');
+  USING (id::text = auth.jwt() ->> 'sub');
 
 -- IDEAS: Users can only access their own ideas
 CREATE POLICY "Users can view own ideas"
   ON ideas FOR SELECT
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can insert own ideas"
   ON ideas FOR INSERT
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  WITH CHECK (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can update own ideas"
   ON ideas FOR UPDATE
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can delete own ideas"
   ON ideas FOR DELETE
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- CREDENTIALS: Users can only access their own credentials
 CREATE POLICY "Users can view own credentials"
   ON credentials FOR SELECT
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can insert own credentials"
   ON credentials FOR INSERT
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  WITH CHECK (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can update own credentials"
   ON credentials FOR UPDATE
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can delete own credentials"
   ON credentials FOR DELETE
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- EXECUTIONS: Users can only view their own executions
 CREATE POLICY "Users can view own executions"
   ON executions FOR SELECT
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- OUTPUTS: Users can only view their own outputs
 CREATE POLICY "Users can view own outputs"
   ON outputs FOR SELECT
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- BLOG_POSTS: Users can view their own posts, public can view public posts
 CREATE POLICY "Users can view own blog posts"
   ON blog_posts FOR SELECT
   USING (
-    user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub')
+    user_id::text = auth.jwt() ->> 'sub'
     OR is_public = true
   );
 
 CREATE POLICY "Users can insert own blog posts"
   ON blog_posts FOR INSERT
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  WITH CHECK (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can update own blog posts"
   ON blog_posts FOR UPDATE
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 CREATE POLICY "Users can delete own blog posts"
   ON blog_posts FOR DELETE
-  USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- ============================================================
 -- TRIGGERS FOR UPDATED_AT
@@ -253,6 +252,7 @@ VALUES ('images', 'images', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Storage policy: Users can upload to their own folder
+DROP POLICY IF EXISTS "Users can upload own images" ON storage.objects;
 CREATE POLICY "Users can upload own images"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -261,6 +261,7 @@ CREATE POLICY "Users can upload own images"
   );
 
 -- Storage policy: Anyone can view images (public bucket)
+DROP POLICY IF EXISTS "Anyone can view images" ON storage.objects;
 CREATE POLICY "Anyone can view images"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'images');
@@ -269,7 +270,5 @@ CREATE POLICY "Anyone can view images"
 -- SEED DATA (Optional - for testing)
 -- ============================================================
 
--- Insert a test user (comment out in production)
--- INSERT INTO users (clerk_user_id, email, name)
--- VALUES ('test_user_123', 'test@example.com', 'Test User')
--- ON CONFLICT DO NOTHING;
+-- Users are created automatically by NextAuth when they sign in with GitHub
+-- No manual INSERT needed!

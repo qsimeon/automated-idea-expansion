@@ -129,16 +129,12 @@ ALTER TABLE payment_receipts ENABLE ROW LEVEL SECURITY;
 -- Users can view their own usage
 CREATE POLICY "Users can view own usage"
   ON usage_tracking FOR SELECT
-  USING (user_id IN (
-    SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'
-  ));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- Users can view their own payment receipts
 CREATE POLICY "Users can view own receipts"
   ON payment_receipts FOR SELECT
-  USING (user_id IN (
-    SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'
-  ));
+  USING (user_id::text = auth.jwt() ->> 'sub');
 
 -- Service role can do everything (for admin operations and API)
 CREATE POLICY "Service role has full access to usage_tracking"

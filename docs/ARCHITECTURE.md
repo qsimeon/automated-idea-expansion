@@ -88,7 +88,7 @@ Transform raw ideas into production-quality content:
                     ┌────────┴────────┐
                     ▼                 ▼
 ┌────────────────────────────┐  ┌────────────────────────────┐
-│    BLOG CREATOR V3         │  │    CODE CREATOR V2         │
+│    BLOG CREATOR            │  │    CODE CREATOR            │
 │    (cell-based)            │  │    (multi-stage)           │
 │                            │  │                            │
 │  1. Planning (GPT-5 Nano)  │  │  1. Planning (GPT-4o-mini) │
