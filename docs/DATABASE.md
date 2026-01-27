@@ -25,11 +25,13 @@
 
 This application uses **PostgreSQL 15 via Supabase** for all data storage. The database is the single source of truth for:
 
-- User accounts and authentication
-- Generated ideas, outputs, and content
+- User accounts and authentication (GitHub OAuth)
+- User ideas with AI-generated summaries
+- Generated outputs (blog posts, code repos, etc.)
 - Execution logs and audit trails
-- User credentials (encrypted)
+- User credentials (encrypted API keys)
 - Credit usage and payment tracking
+- System configuration (database versioning for JWT epoch)
 
 ### Key Characteristics
 
@@ -39,7 +41,9 @@ This application uses **PostgreSQL 15 via Supabase** for all data storage. The d
 | **Authentication** | GitHub OAuth via NextAuth |
 | **Security** | Row-Level Security (RLS) on all tables |
 | **Encryption** | AES-256-GCM for credentials |
-| **Access Control** | Per-user data isolation |
+| **Access Control** | Per-user data isolation via RLS |
+| **JWT Validation** | Database epoch system prevents stale tokens |
+| **Idea Summarization** | AI-generated 1-sentence summaries (Claude Haiku) |
 | **Scalability** | Automatic with Supabase |
 
 ---
@@ -53,87 +57,100 @@ This application uses **PostgreSQL 15 via Supabase** for all data storage. The d
 │                         DATABASE SCHEMA                              │
 └──────────────────────────────────────────────────────────────────────┘
 
-                            ┌──────────────┐
-                            │    USERS     │
-                            │──────────────│
-                            │ id (PK)      │
-                            │ email (UQ)   │────────────┐
-                            │ name         │            │
-                            │ timezone     │            │
-                            │ created_at   │            │
-                            │ updated_at   │            │
-                            └──────────────┘            │
-                                   ▲                    │
-                    ┌──────────────┬┼────────────┬──────┴──────────┐
-                    │              │ │            │                 │
-                    │              │ │            │                 │
-         ┌──────────▼──┐  ┌────────▼─▼─┐  ┌──────▼────┐  ┌────────▼──┐
-         │   IDEAS     │  │ CREDENTIALS │  │  OUTPUTS  │  │ EXECUTION │
-         │─────────────│  │─────────────│  │───────────│  │───────────│
-         │ id (PK)     │  │ id (PK)     │  │ id (PK)   │  │ id (PK)   │
-         │ user_id (FK)├──┤ user_id(FK) │  │ user_id   │  │ user_id   │
-         │ title       │  │ provider(UQ)│  │ execution │  │ selected  │
-         │ description │  │ encrypted   │  │ _id (FK)  │  │ _idea_id  │
-         │ status      │  │ is_active   │  │ format    │  │ status    │
-         │ created_at  │  │ created_at  │  │ published │  │ created_at│
-         │ updated_at  │  │ updated_at  │  │ created_at│  └───────────┘
-         └──────────────┘  └─────────────┘  └───────────┘
-                    │                             ▲
-                    │                             │
-                    │                ┌────────────┘
-                    │                │
-                    │      ┌─────────▼──────┐
-                    │      │  BLOG_POSTS    │
-                    └─────▶│────────────────│
-                           │ id (PK)        │
-                           │ output_id (FK) │
-                           │ title          │
-                           │ slug           │
-                           │ markdown       │
-                           │ created_at     │
-                           └────────────────┘
+┌──────────────┐                       ┌──────────────┐
+│    CONFIG    │                       │    USERS     │
+│──────────────│                       │──────────────│
+│ key (UQ)     │                       │ id (PK)      │
+│ value        │                       │ email (UQ)   │────────────┐
+│ description  │                       │ name         │            │
+└──────────────┘                       │ timezone     │            │
+                                       │ created_at   │            │
+                                       │ updated_at   │            │
+                                       └──────────────┘            │
+                                              ▲                    │
+                               ┌──────────────┬┼────────────┬──────┴──────────┐
+                               │              │ │            │                 │
+                               │              │ │            │                 │
+                    ┌──────────▼──┐  ┌────────▼─▼─┐  ┌──────▼────┐  ┌────────▼──┐
+                    │   IDEAS     │  │ CREDENTIALS │  │  OUTPUTS  │  │ EXECUTION │
+                    │─────────────│  │─────────────│  │───────────│  │───────────│
+                    │ id (PK)     │  │ id (PK)     │  │ id (PK)   │  │ id (PK)   │
+                    │ user_id (FK)├──┤ user_id(FK) │  │ user_id   │  │ user_id   │
+                    │ title       │  │ provider(UQ)│  │ execution │  │ selected  │
+                    │ summary     │  │ encrypted   │  │ _id (FK)  │  │ _idea_id  │
+                    │ description │  │ is_active   │  │ format    │  │ status    │
+                    │ status      │  │ created_at  │  │ published │  │ created_at│
+                    │ created_at  │  │ updated_at  │  │ created_at│  └───────────┘
+                    │ updated_at  │  │             │  │           │
+                    └──────────────┘  └─────────────┘  └───────────┘
+                               │                             ▲
+                               │                             │
+                               │                ┌────────────┘
+                               │                │
+                               │      ┌─────────▼──────┐
+                               │      │  BLOG_POSTS    │
+                               └─────▶│────────────────│
+                                      │ id (PK)        │
+                                      │ output_id (FK) │
+                                      │ title          │
+                                      │ slug           │
+                                      │ markdown       │
+                                      │ created_at     │
+                                      │ updated_at     │
+                                      └────────────────┘
 
-Additional Tables (Credit System):
+Support Tables (Credit & Usage):
    USAGE_TRACKING ─┐     PAYMENT_RECEIPTS
    ───────────────┼─────────────────────────
    user_id (FK)   │     id (PK)
    free/paid      │     user_id (FK)
    remaining      │     amount_usd
+   total_used     │     credits_purchased
    created_at     │     bmc_reference
                   │     verified_at
 ```
 
 ### Core Tables
 
+**config** - System-wide configuration
+- `key` (TEXT, UNIQUE): Config key (e.g., 'database_version')
+- `value` (TEXT): Config value
+- `updated_by`: Who updated it
+- **Purpose:** Store database_version for JWT epoch system (prevents stale tokens)
+
 **users** - User accounts created via GitHub OAuth
 - `id` (UUID): Primary key
-- `email` (TEXT): GitHub email, unique
+- `email` (TEXT, UNIQUE): GitHub email
 - `name` (TEXT): GitHub name
 - `timezone` (TEXT): User's timezone
 - `created_at`, `updated_at`: Timestamps
+- **Trigger:** Auto-creates usage_tracking with 5 free credits on insert
 
-**ideas** - Raw ideas submitted by users
+**ideas** - User ideas for expansion
 - `id` (UUID): Primary key
-- `user_id` (FK): References users
-- `title`, `description`: Content
-- `status` (pending/expanded/archived)
-- `priority_score` (0-100)
-- Indexes on (user_id, status), (created_at), (priority_score)
+- `user_id` (FK): References users (CASCADE delete)
+- `title` (TEXT): AI-generated 1-sentence summary (max 150 chars)
+- `summary` (TEXT): Same as title
+- `description` (TEXT): Full idea text
+- `status`: pending/expanded/archived
+- `priority_score` (INT): 0-100
+- `external_links` (JSONB): Optional references
+- Indexes on (user_id, status), (created_at), (priority_score), (summary)
 
 **credentials** - Encrypted API keys (per-user)
 - `id` (UUID): Primary key
 - `user_id` (FK): References users
-- `provider` (openai/anthropic/github/etc)
+- `provider`: openai/anthropic/github/twitter/replicate
 - `encrypted_value` (TEXT): AES-256-GCM encrypted
 - `is_active`, `validation_status`
-- Unique on (user_id, provider)
+- **Unique:** (user_id, provider)
 
-**outputs** - Generated content (blogs, code, images)
+**outputs** - Generated content from pipeline runs
 - `id` (UUID): Primary key
 - `execution_id` (FK): References executions
 - `user_id` (FK): References users
 - `idea_id` (FK, nullable): References ideas
-- `format` (blog_post/twitter_thread/github_repo/image)
+- `format`: blog_post/twitter_thread/github_repo/image
 - `content` (JSONB): Format-specific content
 - `published` (BOOLEAN): Publish status
 - `publication_url` (TEXT): GitHub/Medium URL if published
@@ -142,34 +159,38 @@ Additional Tables (Credit System):
 - `id` (UUID): Primary key
 - `user_id` (FK): References users
 - `selected_idea_id` (FK, nullable): References ideas
-- `format_chosen`: Which format was selected
-- `status` (running/completed/failed/partial)
-- `tokens_used` (INTEGER): Token consumption tracking
-- `started_at`, `completed_at`: Timing
-- `error_message`, `error_step`: Failure tracking
+- `format_chosen`: blog_post/github_repo/etc
+- `format_reasoning` (TEXT): Why this format was chosen
+- `status`: running/completed/failed/partial
+- `tokens_used` (INT): Token consumption
+- `duration_seconds`: How long execution took
+- `error_message`, `error_step`: Failure details
 
-**blog_posts** - Blog-specific output data
+**blog_posts** - Blog-specific metadata
 - `id` (UUID): Primary key
-- `output_id` (FK): References outputs (1:1)
+- `output_id` (FK, UNIQUE): References outputs
 - `user_id` (FK): References users
 - `title`, `slug` (UNIQUE per user)
 - `markdown_content`, `html_content`
+- `meta_description`, `tags`
 - `is_public`, `published_at`
 
-**usage_tracking** - Credit system (created by migration 002)
+**usage_tracking** - Credit system (auto-created with setup-db.sql)
 - `user_id` (FK, UNIQUE): References users
 - `free_expansions_remaining` (INT): Defaults to 5
-- `paid_credits_remaining` (INT): User purchases
+- `paid_credits_remaining` (INT): User-purchased
 - `total_expansions_used` (INT): Lifetime counter
-- Auto-created when user signs up
+- `total_free_used`, `total_paid_used`: Breakdown
+- **Trigger:** Auto-created when new user signs up
 
-**payment_receipts** - Buy Me a Coffee payment records (created by migration 002)
+**payment_receipts** - Buy Me a Coffee payment records (created with setup-db.sql)
 - `id` (UUID): Primary key
 - `user_id` (FK): References users
-- `amount_usd`, `credits_purchased`
-- `bmc_reference`: Buy Me a Coffee reference
-- `status` (pending/verified/refunded)
+- `amount_usd`, `credits_purchased` (INT)
+- `bmc_reference`: BMC transaction reference
+- `status`: pending/verified/refunded
 - `verified_at`: When admin verified
+- **Index:** On (user_id), (status), (created_at)
 
 ---
 
@@ -261,9 +282,39 @@ Visit http://localhost:3000 and sign in with GitHub.
 
 ## Tables & Schema
 
+### config Table
+
+**Purpose:** System-wide configuration (database versioning for JWT epoch system)
+
+**Schema:**
+```sql
+CREATE TABLE config (
+  id SERIAL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  value TEXT NOT NULL,
+  description TEXT,
+  updated_by TEXT DEFAULT 'system',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Current Values:**
+- `database_version = '1'` (incremented on database resets)
+
+**Purpose:**
+- `database_version`: Used to invalidate stale JWT tokens when database is reset
+- When you reset the database, increment this to force all users to re-authenticate
+
+**Usage:**
+- JWT tokens store the current database_version when user signs in
+- Each API request checks: does token.dbVersion == current database_version?
+- If mismatch, token is considered stale and user must sign in again
+
+---
+
 ### users Table
 
-**Purpose:** Store user accounts created via GitHub OAuth
+**Purpose:** User accounts created via GitHub OAuth
 
 **Schema:**
 ```sql
@@ -283,39 +334,43 @@ CREATE TABLE users (
 **RLS Policies:**
 - Users can view their own record
 - Users can update their own record
-- Service role: full access (for admin operations)
 
 **Usage:**
 - Auto-created when user signs in via GitHub OAuth
 - One record per unique email
-- Updated when user changes profile in GitHub
+- Trigger auto-creates usage_tracking with 5 free credits
+
+---
 
 ### ideas Table
 
-**Purpose:** Store raw ideas that users submit for expansion
+**Purpose:** Store user ideas for expansion
 
 **Schema:**
 ```sql
 CREATE TABLE ideas (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,           -- 1-sentence summary (AI-generated)
-  summary TEXT,                  -- Same as title (for display)
-  status TEXT DEFAULT 'pending'
-    CHECK (status IN ('pending', 'expanded', 'archived')),
-  priority_score INTEGER DEFAULT 0
-    CHECK (priority_score >= 0 AND priority_score <= 100),
+  title TEXT NOT NULL,              -- AI-generated 1-sentence summary (max 150 chars)
+  summary TEXT,                     -- AI-generated summary (same as title)
+  description TEXT,                 -- Full idea text
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'expanded', 'archived')),
+  priority_score INTEGER DEFAULT 0 CHECK (priority_score >= 0 AND priority_score <= 100),
   last_evaluated_at TIMESTAMPTZ,
   times_evaluated INTEGER DEFAULT 0,
+  external_links JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
 **Key Fields:**
-- `title`: AI-generated 1-sentence summary (max 150 chars), set on idea creation
-- `summary`: Duplicate of title, stored for explicit display field
-- Full idea text is passed to AI agents but not stored (ephemeral)
+- `title`: AI-generated 1-sentence summary, created when idea is saved
+- `summary`: Same as title (used for queries and display)
+- `description`: Full idea text provided by user
+- `status`: pending (created), expanded (processed), archived (user archived)
+- `priority_score`: User-set priority (0-100)
+- `external_links`: Optional references/links in JSONB array
 
 **Indexes:**
 - `idx_ideas_user_status`: Fast queries by user and status
@@ -326,10 +381,12 @@ CREATE TABLE ideas (
 **RLS Policies:**
 - Users can view, create, update, delete only their own ideas
 
-**Status Transitions:**
-- `pending` → `expanded` (when user runs expansion)
-- `pending` → `archived` (when user archives)
-- `expanded` → `archived` (when user archives expanded idea)
+**Workflow:**
+1. User submits idea (POST /api/ideas with content)
+2. AI summarizer generates 1-sentence title (max 150 chars)
+3. Idea stored with: title=summary, description=full_text, status=pending
+4. User clicks "Expand" → status changes to expanded
+5. User can archive idea → status changes to archived
 
 ### credentials Table
 
