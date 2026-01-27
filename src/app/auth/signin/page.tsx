@@ -23,13 +23,16 @@ export default function SignInPage() {
   const handleSignIn = async () => {
     setIsLoading(true);
     try {
+      console.log('🔐 SignIn: Starting GitHub OAuth with callbackUrl:', callbackUrl);
       // Redirect to GitHub OAuth
       // The callbackUrl comes from middleware (which was triggered when user tried to access protected route)
-      await signIn('github', {
+      const result = await signIn('github', {
         callbackUrl: callbackUrl, // Redirect back to original page after sign-in
+        redirect: true, // Ensure redirect happens
       });
+      console.log('🔐 SignIn: GitHub OAuth result:', result);
     } catch (error) {
-      console.error('Sign-in error:', error);
+      console.error('❌ Sign-in error:', error);
       setIsLoading(false);
     }
   };

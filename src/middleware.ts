@@ -39,19 +39,30 @@ export async function middleware(request: NextRequest) {
   }
 
   // This is a protected route - check authentication
-  // Use getToken to check the NextAuth JWT token
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  try {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
 
-  if (!token?.sub) {
-    // Not authenticated (no valid token) - redirect to signin
+    if (token?.sub || token?.userId) {
+      // User is authenticated - allow through
+      console.log(`✅ Middleware: User authenticated, allowing access to ${pathname}`);
+      return NextResponse.next();
+    }
+
+    // No valid token - redirect to signin
+    console.log(`⚠️ Middleware: No valid token for ${pathname}, redirecting to signin`);
     const signInUrl = new URL('/auth/signin', request.url);
-    // Keep the original URL so we can redirect back after signin
+    signInUrl.searchParams.set('callbackUrl', pathname);
+    return NextResponse.redirect(signInUrl);
+  } catch (error) {
+    console.error('❌ Middleware error:', error);
+    // On error, redirect to signin (safer than allowing access)
+    const signInUrl = new URL('/auth/signin', request.url);
     signInUrl.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(signInUrl);
   }
-
-  // Authenticated - allow through
-  return NextResponse.next();
 }
 
 // Configure which routes trigger middleware

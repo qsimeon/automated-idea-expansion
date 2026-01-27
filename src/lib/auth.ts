@@ -83,55 +83,83 @@ export const authOptions: NextAuthOptions = {
         if (existingUser) {
           // User exists
           userId = existingUser.id;
+          console.log('✅ JWT callback: User already exists', { userId, email: token.email });
         } else {
           // Create new user
-          const { data: newUser, error } = await supabaseAdmin
-            .from('users')
-            .insert({
-              email: token.email!,
-              name: token.name || (profile as any).login || 'GitHub User',
-              timezone: 'UTC',
-            })
-            .select('id')
-            .single();
+          try {
+            const { data: newUser, error } = await supabaseAdmin
+              .from('users')
+              .insert({
+                email: token.email!,
+                name: token.name || (profile as any).login || 'GitHub User',
+                timezone: 'UTC',
+              })
+              .select('id')
+              .single();
 
-          if (error || !newUser) {
-            console.error('Failed to create user:', error);
-            throw new Error('Failed to create user account');
+            if (error || !newUser) {
+              console.error('❌ JWT callback: Failed to create user:', error);
+              throw new Error(`Failed to create user account: ${error?.message || 'Unknown error'}`);
+            }
+
+            userId = newUser.id;
+            console.log('✅ JWT callback: New user created', { userId, email: token.email });
+
+            // Create usage tracking record (5 free expansions)
+            const { error: usageError } = await supabaseAdmin.from('usage_tracking').insert({
+              user_id: userId,
+              free_expansions_remaining: 5,
+            });
+
+            if (usageError) {
+              console.error('❌ JWT callback: Failed to create usage tracking:', usageError);
+              throw new Error(`Failed to create usage tracking: ${usageError.message}`);
+            }
+            console.log('✅ JWT callback: Usage tracking created');
+          } catch (err) {
+            console.error('❌ JWT callback error during user creation:', err);
+            throw err;
           }
-
-          userId = newUser.id;
-
-          // Create usage tracking record (5 free expansions)
-          await supabaseAdmin.from('usage_tracking').insert({
-            user_id: userId,
-            free_expansions_remaining: 5,
-          });
         }
 
         // Store GitHub token (encrypted)
         if (account.access_token) {
-          const encryptedToken = encryptToJSON(account.access_token);
+          try {
+            const encryptedToken = encryptToJSON(account.access_token);
 
-          // Upsert credential (insert or update if exists)
-          await supabaseAdmin
-            .from('credentials')
-            .upsert(
-              {
-                user_id: userId,
-                provider: 'github',
-                encrypted_value: encryptedToken,
-                is_active: true,
-                validation_status: 'valid',
-              },
-              {
-                onConflict: 'user_id,provider',
-              }
-            );
+            // Upsert credential (insert or update if exists)
+            const { error: credError } = await supabaseAdmin
+              .from('credentials')
+              .upsert(
+                {
+                  user_id: userId,
+                  provider: 'github',
+                  encrypted_value: encryptedToken,
+                  is_active: true,
+                  validation_status: 'valid',
+                },
+                {
+                  onConflict: 'user_id,provider',
+                }
+              );
+
+            if (credError) {
+              console.error('❌ JWT callback: Failed to store GitHub token:', credError);
+              throw new Error(`Failed to store credentials: ${credError.message}`);
+            }
+            console.log('✅ JWT callback: GitHub token stored (encrypted)');
+          } catch (err) {
+            console.error('❌ JWT callback error during token storage:', err);
+            throw err;
+          }
+        } else {
+          console.warn('⚠️ JWT callback: No GitHub access token in account object');
         }
 
-        // Add userId to token
+        // Add userId to token for session
         token.userId = userId;
+        token.sub = userId; // Add standard OpenID Connect 'sub' claim
+        console.log('✅ JWT callback: Token created with userId', { userId });
       }
 
       return token;
