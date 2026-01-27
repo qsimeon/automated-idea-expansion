@@ -1,24 +1,24 @@
 -- ============================================================================
--- AUTOMATED IDEA EXPANSION - Complete Database Setup
+-- DATABASE SETUP - Complete Schema from Scratch
 -- ============================================================================
 --
--- SINGLE SCRIPT: Creates everything in one run
--- - All tables (users, ideas, outputs, executions, credentials, blog_posts)
--- - Usage tracking system (credit system)
--- - Row-Level Security (RLS) policies
--- - Triggers and functions
--- - Storage bucket
+-- Creates everything needed for the app to work:
+-- - All tables (users, ideas, outputs, etc.)
+-- - Config table with database_version (for JWT epoch system)
+-- - Ideas table with summary column (for AI summarization)
+-- - All indexes, RLS policies, triggers, functions
+-- - Storage bucket for images
 --
--- Run AFTER: scripts/complete-db-reset.sql
--- Run BEFORE: npm run dev
+-- This script is idempotent (safe to run multiple times).
+-- Use this after reset-db.sql to create a fresh database.
 --
 -- HOW TO RUN:
 -- 1. Go to https://app.supabase.com
 -- 2. SQL Editor → New Query
 -- 3. Copy ALL of this file
 -- 4. Paste and click "Run"
--- 5. Wait for completion
--- 6. Then run: npm run db:seed-admin
+-- 5. Then run: scripts/seed-admin.sql to create admin user
+-- 6. Then: npm run dev
 --
 -- ============================================================================
 
@@ -26,8 +26,31 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================
+-- CONFIG TABLE (System metadata)
+-- ============================================================
+-- Stores database_version for JWT epoch system.
+-- When you reset the database, increment this to invalidate all tokens.
+
+CREATE TABLE IF NOT EXISTS config (
+  id SERIAL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  value TEXT NOT NULL,
+  description TEXT,
+  updated_by TEXT DEFAULT 'system',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_config_key ON config(key);
+
+-- Initialize database_version to 1
+INSERT INTO config (key, value, description, updated_by)
+VALUES ('database_version', '1', 'Version number incremented on database resets', 'system')
+ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================
 -- USERS TABLE (GitHub OAuth)
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email TEXT NOT NULL UNIQUE,
@@ -42,17 +65,20 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 -- ============================================================
 -- IDEAS TABLE
 -- ============================================================
+-- Includes 'summary' column for AI-generated 1-sentence titles
+-- Does NOT include 'bullets' (planned but never used)
+
 CREATE TABLE IF NOT EXISTS ideas (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
+  summary TEXT,
   description TEXT,
-  bullets JSONB DEFAULT '[]'::jsonb,
-  external_links JSONB DEFAULT '[]'::jsonb,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'expanded', 'archived')),
   priority_score INTEGER DEFAULT 0 CHECK (priority_score >= 0 AND priority_score <= 100),
   last_evaluated_at TIMESTAMPTZ,
   times_evaluated INTEGER DEFAULT 0,
+  external_links JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -60,10 +86,12 @@ CREATE TABLE IF NOT EXISTS ideas (
 CREATE INDEX IF NOT EXISTS idx_ideas_user_status ON ideas(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_ideas_created ON ideas(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ideas_priority ON ideas(priority_score DESC);
+CREATE INDEX IF NOT EXISTS idx_ideas_summary ON ideas(summary);
 
 -- ============================================================
 -- CREDENTIALS TABLE (encrypted API keys)
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS credentials (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -81,6 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_credentials_user_provider ON credentials(user_id,
 -- ============================================================
 -- EXECUTIONS TABLE (daily run logs)
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS executions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -104,6 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status);
 -- ============================================================
 -- OUTPUTS TABLE (generated content)
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS outputs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   execution_id UUID NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
@@ -125,6 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_outputs_format ON outputs(format);
 -- ============================================================
 -- BLOG_POSTS TABLE
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS blog_posts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   output_id UUID UNIQUE REFERENCES outputs(id) ON DELETE CASCADE,
@@ -149,6 +180,7 @@ CREATE INDEX IF NOT EXISTS idx_blog_posts_user ON blog_posts(user_id, created_at
 -- ============================================================
 -- USAGE TRACKING TABLE (Credit System)
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS usage_tracking (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -166,6 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_tracking_user_id ON usage_tracking(user_id)
 -- ============================================================
 -- PAYMENT RECEIPTS TABLE
 -- ============================================================
+
 CREATE TABLE IF NOT EXISTS payment_receipts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -383,11 +416,11 @@ CREATE POLICY "Users can upload own images" ON storage.objects FOR INSERT WITH C
 
 CREATE POLICY "Anyone can view images" ON storage.objects FOR SELECT USING (bucket_id = 'images');
 
--- ============================================================
+-- ============================================================================
 -- VERIFICATION
--- ============================================================
+-- ============================================================================
 
-SELECT '✅ Database setup complete!' AS status;
-SELECT 'Created tables: users, ideas, credentials, executions, outputs, blog_posts, usage_tracking, payment_receipts' AS tables;
-SELECT 'Enabled: RLS policies, triggers, functions, storage bucket' AS features;
-SELECT 'Next step: npm run db:seed-admin' AS next_step;
+SELECT '✅ Database schema created successfully!' AS status;
+SELECT 'Tables: users, ideas, credentials, executions, outputs, blog_posts, usage_tracking, payment_receipts, config' AS tables_created;
+SELECT 'Features: RLS policies, triggers, functions, storage bucket, database_version epoch system' AS features_enabled;
+SELECT 'Next step: Run scripts/seed-admin.sql to create admin user' AS next_step;

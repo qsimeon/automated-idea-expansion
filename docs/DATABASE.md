@@ -14,7 +14,7 @@
 6. [Usage Tracking & Credits](#usage-tracking--credits)
 7. [Database Epoch System](#database-epoch-system)
 8. [Idea Summarization](#idea-summarization)
-9. [Management Scripts](#management-scripts)
+9. [Database Initialization & Admin Tools](#database-initialization--admin-tools)
 10. [Common Operations](#common-operations)
 11. [Backup & Recovery](#backup--recovery)
 12. [Troubleshooting](#troubleshooting)
@@ -184,50 +184,46 @@ Follow these steps to set up a database from scratch:
 3. Create project in desired region
 4. Wait for provisioning (~5 minutes)
 
-### Step 2: Run Initial Setup Script
+### Step 2: Run Three Setup Scripts
 
-1. Go to **SQL Editor** in Supabase dashboard
-2. Click **New Query**
-3. Copy entire content of `scripts/setup-db.sql`
-4. Click **Run**
-5. Wait for completion (should see all table creation messages)
+Go to **SQL Editor** in Supabase dashboard and run these scripts in order:
 
-**What this does:**
-- Creates all 6 core tables (users, ideas, credentials, executions, outputs, blog_posts)
-- Creates indexes for performance
-- Enables Row-Level Security (RLS) on all tables
-- Creates RLS policies for data isolation
-- Creates update triggers for updated_at
-- Creates images storage bucket
+#### Script 1: `scripts/setup-db.sql`
 
-### Step 3: Run Migration 002 (Usage Tracking)
-
-1. **SQL Editor** → **New Query**
-2. Copy `scripts/migrations/002-add-usage-tracking-simple.sql`
+1. Click **New Query**
+2. Copy entire content of `scripts/setup-db.sql`
 3. Click **Run**
 
-**What this does:**
-- Creates `usage_tracking` table
-- Creates `payment_receipts` table
-- Creates database functions for credit management
-- Enables RLS on new tables
-- Creates triggers for auto-initialization
+**Creates:**
+- All 9 tables (users, ideas, config, credentials, executions, outputs, blog_posts, usage_tracking, payment_receipts)
+- Config table with database_version = 1 (JWT epoch system)
+- Ideas table with summary column (AI summarization)
+- All indexes, RLS policies, triggers, and functions
+- Storage bucket for images
+- Credit system functions
 
-### Step 4: Seed Admin User (Optional)
+#### Script 2: `scripts/seed-admin.sql`
 
-To create admin user with 100 credits:
+1. Click **New Query**
+2. Copy entire content of `scripts/seed-admin.sql`
+3. Click **Run**
 
-**Option A: SQL (in Supabase SQL Editor)**
-```bash
-Copy scripts/seed-admin-user.sql and run it
-```
+**Creates:**
+- Admin user: qsimeon@mit.edu
+- Credits: 5 free + 95 paid = 100 total
+- Ready to use immediately
 
-**Option B: TypeScript (locally)**
-```bash
-npm run db:seed-admin
-```
+#### Done!
 
-### Step 5: Configure Environment Variables
+That's it. Your database is now fully set up with:
+- ✅ Complete schema
+- ✅ JWT epoch system (prevents stale tokens)
+- ✅ AI idea summarization
+- ✅ Credit system
+- ✅ RLS security policies
+- ✅ Admin user ready to go
+
+### Step 3: Configure Environment Variables
 
 Create `.env.local`:
 
@@ -253,13 +249,13 @@ OPENAI_API_KEY=sk-proj-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### Step 6: Test Setup
+### Step 4: Start App
 
 ```bash
 npm run dev
-# Sign in with GitHub
-# Verify you see 5 free credits
 ```
+
+Visit http://localhost:3000 and sign in with GitHub.
 
 ---
 
@@ -832,169 +828,219 @@ If summarizer fails, idea is created WITHOUT summary (it's optional). App contin
 
 ---
 
-## Management Scripts
+## Database Initialization & Admin Tools
 
-### Database Operation Scripts
+### Standard Workflow
 
-#### Complete Reset (Danger!)
+There are three SQL scripts for database management:
 
-**File:** `scripts/complete-db-reset.sql`
+#### 1. Reset Database (`scripts/reset-db.sql`)
 
-**What it does:** Drops ALL tables, functions, and data
+**Purpose:** Completely wipe the database (all tables, data, functions)
 
 **When to use:**
 - Starting completely from scratch
 - After failed setup
 - Testing setup procedure
+- Preparing for clean migration
 
-**Warning:** Cannot be undone!
+**What it does:**
+- Drops all tables (cascades to data)
+- Drops all triggers and functions
+- Drops all RLS policies
+
+**How to run:**
+```bash
+# In Supabase SQL Editor (https://app.supabase.com)
+1. SQL Editor → New Query
+2. Copy scripts/reset-db.sql
+3. Paste and click "Run"
+4. Wait for: "✅ Database completely reset!"
+```
+
+**Next step:** Run `setup-db.sql`
+
+---
+
+#### 2. Setup Database (`scripts/setup-db.sql`)
+
+**Purpose:** Create complete schema from scratch
+
+**Includes:**
+- All tables (users, ideas, config, outputs, credentials, executions, blog_posts, usage_tracking, payment_receipts)
+- Ideas table with summary column (for AI summarization)
+- Config table with database_version = 1 (for JWT epoch system)
+- All indexes
+- All RLS policies
+- All triggers and functions
+- Credit system functions
+- Storage bucket
+
+**When to use:**
+- Initial database setup
+- After running reset-db.sql
 
 **How to run:**
 ```bash
 # In Supabase SQL Editor
-Copy scripts/complete-db-reset.sql and run it
+1. SQL Editor → New Query
+2. Copy scripts/setup-db.sql
+3. Paste and click "Run"
+4. Wait for: "✅ Database schema created successfully!"
 ```
 
-**Next steps:**
-```bash
-npm run db:setup           # Run setup-db.sql
-npm run db:migrate         # Run migration 002
-npm run db:seed-admin      # Optional: seed admin user
-```
+**Next step:** Run `seed-admin.sql`
 
-#### Reset Data Only (Safe)
+---
 
-**File:** `scripts/reset-db-delete-data.sql`
+#### 3. Seed Admin User (`scripts/seed-admin.sql`)
 
-**What it does:** Deletes all data but keeps schema and admin user
+**Purpose:** Create admin user with 100 credits
+
+**What it creates:**
+- User: qsimeon@mit.edu
+- Credits: 5 free + 95 paid = 100 total
+- Timezone: America/New_York
+
+**Idempotent:** Safe to run multiple times (updates if exists)
 
 **When to use:**
-- Before production deployment
-- Cleaning test data
-- Regular cleanup
-
-**What's preserved:**
-- Database schema
-- RLS policies
-- Functions and triggers
-- Admin user (qsimeon@mit.edu) with 100 credits
-
-**How to run:**
-```bash
-# In Supabase SQL Editor
-Copy scripts/reset-db-delete-data.sql and run it
-```
-
-**Verification:**
-- Should show: users=1, ideas=0, outputs=0, etc.
-- Admin user has 100 credits
-
-#### Seed Admin User
-
-**SQL Version:** `scripts/seed-admin-user.sql`
-
-**TypeScript Version:** `scripts/admin/seed-admin-user.ts`
-
-**What it does:** Creates admin user (qsimeon@mit.edu) with 100 credits
-
-**When to use:**
-- After initial setup
-- Before deployment
+- After setup-db.sql to prepare admin account
 - To reset admin credits
+- Before deployment
 
 **How to run:**
 ```bash
-# SQL (in Supabase SQL Editor)
-Copy scripts/seed-admin-user.sql and run it
+# In Supabase SQL Editor
+1. SQL Editor → New Query
+2. Copy scripts/seed-admin.sql
+3. Paste and click "Run"
+4. Wait for: "✅ Admin user seeded successfully!"
+```
 
-# TypeScript (locally)
-npm run db:seed-admin
+**Verify:**
+```bash
+# In Supabase SQL Editor, run:
+SELECT u.email, u.name, ut.free_expansions_remaining, ut.paid_credits_remaining
+FROM users u
+JOIN usage_tracking ut ON u.id = ut.user_id
+WHERE u.email = 'qsimeon@mit.edu';
+```
+
+Expected output: qsimeon@mit.edu | Quilee Simeon | 5 | 95
+
+---
+
+### Complete Setup from Scratch
+
+```bash
+# Step 1: Reset (deletes everything)
+# → Supabase SQL Editor → scripts/reset-db.sql
+
+# Step 2: Setup (creates schema)
+# → Supabase SQL Editor → scripts/setup-db.sql
+
+# Step 3: Seed (creates admin user)
+# → Supabase SQL Editor → scripts/seed-admin.sql
+
+# Step 4: Start app
+npm run dev
+```
+
+---
+
+### Admin Operations
+
+#### Granting Credits After Payment
+
+**Scenario:** User pays via Buy Me a Coffee, you verify, grant credits
+
+**Manual SQL (Supabase SQL Editor):**
+```sql
+-- Add 5 credits to user@example.com
+SELECT add_paid_credits(
+  (SELECT id FROM users WHERE email = 'user@example.com'),
+  5,                              -- credits
+  5.00,                          -- USD amount
+  'BMC-2026-01-27-ABC123',      -- BMC reference
+  'admin',                       -- verified by
+  'Verified via BMC email'       -- notes
+);
+```
+
+**Or use TypeScript script** (if available):
+```bash
+npx tsx scripts/admin/grant-credits.ts user@example.com 5 5.00 "BMC-2026-01-27-ABC123"
 ```
 
 **Verification:**
 ```sql
-SELECT u.email, ut.free_expansions_remaining, ut.paid_credits_remaining
+SELECT u.email, ut.paid_credits_remaining, COUNT(pr.id) as payments
 FROM users u
 JOIN usage_tracking ut ON u.id = ut.user_id
-WHERE u.email = 'qsimeon@mit.edu';
--- Should show: free=5, paid=95, total=100
-```
-
-#### Grant Credits (Admin Tool)
-
-**File:** `scripts/admin/grant-credits.ts`
-
-**What it does:** Add paid credits to user after BMC payment verification
-
-**Process:**
-1. User pays via Buy Me a Coffee
-2. You receive email notification
-3. Verify payment details
-4. Run grant-credits with user email and amount
-5. Script creates payment receipt
-6. Credits added instantly
-
-**How to use:**
-```bash
-# Grant 5 credits after $5 payment
-npx tsx scripts/admin/grant-credits.ts user@example.com 5 5.00 "BMC-12345"
-
-# Or via npm script
-npm run admin:grant-credits user@example.com 5 5.00 "BMC-12345"
-```
-
-**Parameters:**
-```bash
-tsx scripts/admin/grant-credits.ts <email> <credits> <amount> [bmc_ref] [notes]
-```
-
-**Output:**
-```
-💳 Processing credit grant...
-User Email: user@example.com
-Credits to Grant: 5
-Reference: BMC-12345
-
-Step 1: Looking up user...
-✅ User found: John Doe
-
-Step 2: Getting current credits...
-Current Credits: 0
-
-Step 3: Creating payment receipt...
-✅ Payment receipt created
-
-Step 4: Verifying...
-✅ Verification successful
-
-═══════════════════════════════════════════════════════════
-✨ Credits granted successfully!
-
-User:              user@example.com
-Credits Added:     5
-Previous Total:    0
-New Total:         5
-Receipt ID:        550e8400-e29b-41d4-a716-446655440000
-Reference:         BMC-12345
-═══════════════════════════════════════════════════════════
-```
-
-### Development Helper Scripts
-
-#### Database Helper (db-helper.ts)
-
-**File:** `scripts/db-helper.ts`
-
-**Commands:**
-```bash
-npm run db check-ideas      # List all ideas for test user
-npm run db check-outputs    # List all outputs for test user
-npm run db check-join       # Test join queries
-npm run db check-fk         # Verify foreign keys
-npm run db clear            # Delete all test user data
+LEFT JOIN payment_receipts pr ON u.id = pr.user_id
+WHERE u.email = 'user@example.com'
+GROUP BY u.id, u.email, ut.paid_credits_remaining;
 ```
 
 ---
+
+#### Checking User Credits
+
+**Check single user:**
+```sql
+SELECT
+  u.email,
+  u.name,
+  ut.free_expansions_remaining,
+  ut.paid_credits_remaining,
+  (ut.free_expansions_remaining + ut.paid_credits_remaining) as total,
+  ut.total_expansions_used
+FROM users u
+JOIN usage_tracking ut ON u.id = ut.user_id
+WHERE u.email = 'user@example.com';
+```
+
+**Check all users:**
+```sql
+SELECT
+  u.email,
+  u.name,
+  ut.free_expansions_remaining,
+  ut.paid_credits_remaining,
+  (ut.free_expansions_remaining + ut.paid_credits_remaining) as total,
+  ut.total_expansions_used,
+  COUNT(i.id) as ideas_created,
+  COUNT(o.id) as outputs_generated
+FROM users u
+LEFT JOIN usage_tracking ut ON u.id = ut.user_id
+LEFT JOIN ideas i ON u.id = i.user_id
+LEFT JOIN outputs o ON u.id = o.user_id
+GROUP BY u.id, u.email, u.name, ut.free_expansions_remaining, ut.paid_credits_remaining, ut.total_expansions_used
+ORDER BY ut.total_expansions_used DESC;
+```
+
+---
+
+#### Verifying Payment History
+
+```sql
+SELECT
+  u.email,
+  u.name,
+  pr.amount_usd,
+  pr.credits_purchased,
+  pr.bmc_reference,
+  pr.verified_at
+FROM payment_receipts pr
+JOIN users u ON pr.user_id = u.id
+WHERE pr.status = 'verified'
+ORDER BY pr.verified_at DESC;
+```
+
+---
+
+
 
 ## Common Operations
 
