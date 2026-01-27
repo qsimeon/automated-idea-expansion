@@ -189,7 +189,108 @@ export const authOptions: NextAuthOptions = {
         token.sub = userId;
         console.log('✅ JWT callback: Token configured with userId', { userId, email: token.email });
       } else {
-        console.log('✅ JWT callback: User already in token', { userId: token.userId });
+        // User ID exists in token - verify it still exists in database
+        // This handles the case where:
+        // 1. User had old JWT token with userId
+        // 2. Database was reset (user was deleted)
+        // 3. JWT token still contains the old userId
+        // 4. We need to recreate the user
+        console.log('🔍 Verifying user still exists in database...', { userId: token.userId });
+
+        const { data: existingUser, error: verifyError } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('id', token.userId as string)
+          .maybeSingle();
+
+        if (verifyError) {
+          console.error('❌ JWT callback: Error verifying user existence:', verifyError);
+          throw new Error(`Failed to verify user: ${verifyError.message}`);
+        }
+
+        if (!existingUser) {
+          // User was deleted - this is a stale token situation
+          // Recreate the user from the email in the token
+          console.warn('⚠️  User ID in token not found in database, recreating user...', {
+            staleUserId: token.userId,
+            email: token.email,
+          });
+
+          token.userId = undefined; // Clear the stale userId
+
+          // Fallback to user creation logic by recursing with cleared userId
+          // Check if user exists by email
+          const { data: userByEmail, error: selectError } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('email', token.email!)
+            .single();
+
+          if (selectError && selectError.code !== 'PGRST116') {
+            console.error('❌ JWT callback: Error checking user by email:', selectError);
+            throw new Error(`Failed to check user: ${selectError.message}`);
+          }
+
+          if (userByEmail) {
+            // User exists by email - use that account
+            token.userId = userByEmail.id;
+            console.log('✅ JWT callback: User recreated from email match', {
+              userId: token.userId,
+              email: token.email
+            });
+          } else {
+            // Create new user
+            console.log('📝 Creating new user after stale token:', token.email);
+
+            const { data: newUser, error: createError } = await supabaseAdmin
+              .from('users')
+              .insert({
+                email: token.email!,
+                name: token.name || 'GitHub User',
+                timezone: 'UTC',
+              })
+              .select('id')
+              .single();
+
+            if (createError || !newUser) {
+              console.error('❌ JWT callback: Failed to create user:', {
+                error: createError,
+                message: createError?.message,
+              });
+              throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
+            }
+
+            token.userId = newUser.id;
+            console.log('✅ JWT callback: New user created after stale token', {
+              userId: token.userId,
+              email: token.email
+            });
+
+            // Ensure usage tracking exists
+            const { data: usage } = await supabaseAdmin
+              .from('usage_tracking')
+              .select('id')
+              .eq('user_id', token.userId)
+              .single();
+
+            if (!usage) {
+              console.warn('⚠️  Usage tracking trigger didn\'t fire, creating manually...');
+              const { error: manualUsageError } = await supabaseAdmin
+                .from('usage_tracking')
+                .insert({
+                  user_id: token.userId,
+                  free_expansions_remaining: 5,
+                });
+
+              if (manualUsageError) {
+                console.error('❌ JWT callback: Failed to create usage tracking:', manualUsageError);
+                throw new Error(`Failed to create usage tracking: ${manualUsageError.message}`);
+              }
+            }
+          }
+        } else {
+          console.log('✅ JWT callback: User verified in database', { userId: token.userId });
+        }
       }
 
       return token;
