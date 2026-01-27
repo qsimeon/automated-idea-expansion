@@ -71,7 +71,8 @@ export async function getIdeaById(ideaId: string, userId: string): Promise<Idea 
  */
 export async function createIdea(
   userId: string,
-  input: CreateIdeaInput
+  input: CreateIdeaInput,
+  summary?: string
 ): Promise<Idea> {
   // If title not provided, use the content (truncated if too long)
   const title = input.title || (input.content.length > 100
@@ -86,6 +87,7 @@ export async function createIdea(
     .insert({
       user_id: userId,
       title,
+      summary: summary || null, // AI-generated summary (optional)
       description,
       bullets: input.bullets || [],
       status: 'pending',
@@ -140,6 +142,38 @@ export async function deleteIdea(ideaId: string, userId: string): Promise<void> 
     throw new Error(`Failed to delete idea: ${error.message}`);
   }
 }
+
+// ============================================================
+// CONFIG QUERIES (Database metadata)
+// ============================================================
+
+/**
+ * Get the current database version
+ * Used to invalidate stale JWT tokens after database resets
+ */
+export async function getDatabaseVersion(): Promise<number> {
+  const { data, error } = await supabaseAdmin
+    .from('config')
+    .select('value')
+    .eq('key', 'database_version')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Config table not found or database_version not set, return 1 as default
+      console.warn('⚠️ database_version not found in config, defaulting to 1');
+      return 1;
+    }
+    console.error('Error fetching database version:', error);
+    throw new Error(`Failed to fetch database version: ${error.message}`);
+  }
+
+  return parseInt(data?.value || '1', 10);
+}
+
+// ============================================================
+// IDEAS QUERIES (continued)
+// ============================================================
 
 /**
  * Get pending ideas for a user (for agent processing)

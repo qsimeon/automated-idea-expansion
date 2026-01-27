@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { getIdeasForUser, createIdea } from '@/lib/db/queries';
+import { ideaSummarizer } from '@/lib/agents/idea-summarizer';
 import type { CreateIdeaInput } from '@/lib/db/types';
 
 /**
@@ -86,7 +87,22 @@ export async function POST(request: Request) {
       bullets: Array.isArray(body.bullets) ? body.bullets.filter((b: any) => typeof b === 'string' && b.trim()) : undefined,
     };
 
-    const idea = await createIdea(session.user.id, input);
+    // Generate AI summary (1-sentence title) for the idea
+    // This becomes the bold card title, with description as the body
+    let summary: string | undefined;
+    try {
+      console.log('🤖 Generating idea summary...');
+      const summaryResult = await ideaSummarizer(input.content);
+      summary = summaryResult.summary;
+      console.log('✅ Summary generated:', summary);
+    } catch (summarizerError) {
+      console.warn('⚠️  Failed to generate summary, creating idea without it:', {
+        error: summarizerError instanceof Error ? summarizerError.message : String(summarizerError),
+      });
+      // Continue without summary - it's optional
+    }
+
+    const idea = await createIdea(session.user.id, input, summary);
 
     return NextResponse.json(
       {

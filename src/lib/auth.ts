@@ -22,6 +22,7 @@ import { NextAuthOptions } from 'next-auth';
 import GithubProvider from 'next-auth/providers/github';
 import { supabaseAdmin } from './db/supabase';
 import { encryptToJSON } from './crypto/encryption';
+import { getDatabaseVersion } from './db/queries';
 
 /**
  * NextAuth configuration options
@@ -184,112 +185,58 @@ export const authOptions: NextAuthOptions = {
           console.warn('⚠️  No GitHub access token available');
         }
 
-        // CRITICAL: Add userId to token
-        token.userId = userId;
-        token.sub = userId;
-        console.log('✅ JWT callback: Token configured with userId', { userId, email: token.email });
-      } else {
-        // User ID exists in token - verify it still exists in database
-        // This handles the case where:
-        // 1. User had old JWT token with userId
-        // 2. Database was reset (user was deleted)
-        // 3. JWT token still contains the old userId
-        // 4. We need to recreate the user
-        console.log('🔍 Verifying user still exists in database...', { userId: token.userId });
-
-        const { data: existingUser, error: verifyError } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .eq('id', token.userId as string)
-          .maybeSingle();
-
-        if (verifyError) {
-          console.error('❌ JWT callback: Error verifying user existence:', verifyError);
-          throw new Error(`Failed to verify user: ${verifyError.message}`);
+        // CRITICAL: Add userId and database version to token
+        // dbVersion is used to detect stale tokens after database resets
+        try {
+          const dbVersion = await getDatabaseVersion();
+          token.dbVersion = dbVersion;
+        } catch (error) {
+          console.warn('⚠️ Could not get database version, defaulting to 1');
+          token.dbVersion = 1;
         }
 
-        if (!existingUser) {
-          // User was deleted - this is a stale token situation
-          // Recreate the user from the email in the token
-          console.warn('⚠️  User ID in token not found in database, recreating user...', {
-            staleUserId: token.userId,
-            email: token.email,
+        token.userId = userId;
+        token.sub = userId;
+        console.log('✅ JWT callback: Token configured with userId', {
+          userId,
+          email: token.email,
+          dbVersion: token.dbVersion,
+        });
+      } else {
+        // User ID exists in token - verify database hasn't been reset
+        // via the database_version epoch system
+        try {
+          const dbVersion = await getDatabaseVersion();
+          const tokenDbVersion = token.dbVersion as number | undefined;
+
+          if (tokenDbVersion !== undefined && tokenDbVersion !== dbVersion) {
+            // Database was reset since this token was issued
+            // Token is stale - require user to sign in again
+            console.warn('⚠️ Stale JWT detected: database was reset', {
+              tokenVersion: tokenDbVersion,
+              currentVersion: dbVersion,
+              userId: token.userId,
+            });
+
+            // Clear token to force re-authentication
+            return {
+              ...token,
+              userId: undefined,
+              dbVersion: undefined,
+            };
+          }
+
+          // Token is still valid, keep the database version in token
+          token.dbVersion = dbVersion;
+          console.log('✅ JWT callback: Token verified with current database version', {
+            userId: token.userId,
+            dbVersion,
           });
-
-          token.userId = undefined; // Clear the stale userId
-
-          // Fallback to user creation logic by recursing with cleared userId
-          // Check if user exists by email
-          const { data: userByEmail, error: selectError } = await supabaseAdmin
-            .from('users')
-            .select('id')
-            .eq('email', token.email!)
-            .single();
-
-          if (selectError && selectError.code !== 'PGRST116') {
-            console.error('❌ JWT callback: Error checking user by email:', selectError);
-            throw new Error(`Failed to check user: ${selectError.message}`);
-          }
-
-          if (userByEmail) {
-            // User exists by email - use that account
-            token.userId = userByEmail.id;
-            console.log('✅ JWT callback: User recreated from email match', {
-              userId: token.userId,
-              email: token.email
-            });
-          } else {
-            // Create new user
-            console.log('📝 Creating new user after stale token:', token.email);
-
-            const { data: newUser, error: createError } = await supabaseAdmin
-              .from('users')
-              .insert({
-                email: token.email!,
-                name: token.name || 'GitHub User',
-                timezone: 'UTC',
-              })
-              .select('id')
-              .single();
-
-            if (createError || !newUser) {
-              console.error('❌ JWT callback: Failed to create user:', {
-                error: createError,
-                message: createError?.message,
-              });
-              throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
-            }
-
-            token.userId = newUser.id;
-            console.log('✅ JWT callback: New user created after stale token', {
-              userId: token.userId,
-              email: token.email
-            });
-
-            // Ensure usage tracking exists
-            const { data: usage } = await supabaseAdmin
-              .from('usage_tracking')
-              .select('id')
-              .eq('user_id', token.userId)
-              .single();
-
-            if (!usage) {
-              console.warn('⚠️  Usage tracking trigger didn\'t fire, creating manually...');
-              const { error: manualUsageError } = await supabaseAdmin
-                .from('usage_tracking')
-                .insert({
-                  user_id: token.userId,
-                  free_expansions_remaining: 5,
-                });
-
-              if (manualUsageError) {
-                console.error('❌ JWT callback: Failed to create usage tracking:', manualUsageError);
-                throw new Error(`Failed to create usage tracking: ${manualUsageError.message}`);
-              }
-            }
-          }
-        } else {
-          console.log('✅ JWT callback: User verified in database', { userId: token.userId });
+        } catch (error) {
+          console.error('❌ JWT callback: Error checking database version:', error);
+          // Fail open - allow token to continue (database might be in setup)
+          // Log the error but don't break auth
+          token.dbVersion = 1;
         }
       }
 
@@ -361,5 +308,6 @@ declare module 'next-auth' {
 declare module 'next-auth/jwt' {
   interface JWT {
     userId?: string;    // Database user ID
+    dbVersion?: number; // Database epoch version (detects stale tokens)
   }
 }

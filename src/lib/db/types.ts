@@ -13,6 +13,7 @@ export interface Idea {
   id: string;
   user_id: string;
   title: string;
+  summary: string | null; // 1-sentence AI-generated summary
   description: string | null;
   bullets: string[];
   status: 'pending' | 'expanded' | 'archived';
