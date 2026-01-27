@@ -47,7 +47,7 @@ Transform raw ideas into production-quality content:
 | **Cell-based blogs** | Enables multi-platform rendering, atomic edits, no regex |
 | **LangGraph orchestration** | Clear state management, visual debugging, conditional flows |
 | **Zod structured outputs** | Type-safe at runtime, no JSON parsing errors |
-| **GPT-5 Nano for planning** | Ultra-fast, cost-effective structured reasoning |
+| **GPT-4o-mini for planning** | Fast, cost-effective structured reasoning |
 | **Claude Sonnet 4.5 for generation** | Best writing & code quality (LMSYS benchmarks) |
 
 ---
@@ -91,7 +91,7 @@ Transform raw ideas into production-quality content:
 │    BLOG CREATOR            │  │    CODE CREATOR            │
 │    (cell-based)            │  │    (multi-stage)           │
 │                            │  │                            │
-│  1. Planning (GPT-5 Nano)  │  │  1. Planning (GPT-4o-mini) │
+│  1. Planning (GPT-4o-mini) │  │  1. Planning (GPT-4o-mini) │
 │  2. Generation (Sonnet 4.5)│  │  2. Generation (Sonnet 4.5)│
 │  3. Images (FLUX Schnell)  │  │  3. Review (GPT-4o-mini)   │
 │  4. Review (GPT-4o-mini)   │  │  4. Iteration (if needed)  │
@@ -106,6 +106,160 @@ Transform raw ideas into production-quality content:
 │              Supabase PostgreSQL Database                    │
 │           (users, ideas, outputs, executions)                │
 └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Complete System Architecture Diagram
+
+```
+================================================================================
+                   AUTOMATED IDEA EXPANSION ARCHITECTURE
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND (Next.js)                              │
+│                                                                              │
+│  ┌────────────┐        ┌────────────┐        ┌────────────────────────────┐ │
+│  │   /ideas   │        │  /outputs  │        │    /outputs/[id]           │ │
+│  │            │        │            │        │                            │ │
+│  │ List Ideas │───────▶│ List All   │───────▶│ View Blog/Code Output      │ │
+│  │ + Expand   │        │ Outputs    │        │ (Format-Specific Renderer) │ │
+│  └────────────┘        └────────────┘        └────────────────────────────┘ │
+│       │                                                                      │
+│       │ POST /api/expand { ideaId }                                         │
+└───────┼──────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             API LAYER (Route Handlers)                       │
+│                                                                              │
+│  POST /api/expand      GET /api/ideas       DELETE /api/outputs             │
+│  POST /api/ideas       PUT /api/ideas       GET /api/outputs                │
+│  NextAuth callbacks   GitHub OAuth flow                                     │
+│                                                                              │
+│  All requests authenticated via NextAuth JWT sessions                        │
+└───────┬──────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       AGENT ORCHESTRATION (LangGraph)                        │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                         Agent State (Shared)                           │ │
+│  │  { userId, selectedIdea, chosenFormat, generatedContent, errors[] }   │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│         START → [Router Agent] → [Creator Agent] → END                       │
+│                       ↓                   ↓                                  │
+│                  GPT-4o-mini          Routes to format:                      │
+│                  Decides format       - Blog Creator                         │
+│                  (blog/code)          - Code Creator                         │
+│                                                                              │
+│  ┌──────────────────────────────────┐  ┌───────────────────────────────────┐│
+│  │  BLOG CREATOR (4 stages)         │  │  CODE CREATOR (5 stages)          ││
+│  │                                  │  │                                   ││
+│  │  1. Plan (GPT-4o-mini)           │  │  1. Plan (GPT-4o-mini)            ││
+│  │     → Sections, tone, images     │  │     → Language, files, rubric     ││
+│  │                                  │  │                                   ││
+│  │  2. Generate (Claude Sonnet 4.5) │  │  2. Generate (Claude Sonnet 4.5)  ││
+│  │     → MarkdownCells + ImageCells │  │     → All code files + README     ││
+│  │     → SocialPost                 │  │                                   ││
+│  │                                  │  │  3. Review (GPT-4o-mini)          ││
+│  │  3. Images (fal.ai/HuggingFace)  │  │     → Score 0-100 + issues        ││
+│  │     → Generate images from specs │  │                                   ││
+│  │                                  │  │  4. Iteration (if score < 75)     ││
+│  │  4. Review (GPT-4o-mini)         │  │     → Fixer Agent or full regen   ││
+│  │     → Score + feedback           │  │     → Max 3 cycles                ││
+│  │                                  │  │                                   ││
+│  │  Output: Blog JSON               │  │  5. Publish (Octokit)             ││
+│  │  - title, cells[], socialPost    │  │     → User's GitHub repo          ││
+│  │  - _reviewScore, _sections[]     │  │     → Uses encrypted OAuth token  ││
+│  │                                  │  │                                   ││
+│  │                                  │  │  Output: Code JSON                ││
+│  │                                  │  │  - repoUrl, files[], metadata     ││
+│  └──────────────────────────────────┘  └───────────────────────────────────┘│
+│                                                                              │
+│  All AI outputs validated with Zod schemas (structured output API)           │
+└───────┬──────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       DATA LAYER (Supabase PostgreSQL)                       │
+│                                                                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐  ┌────────────┐ │
+│  │  users   │  │  ideas   │  │ outputs  │  │ credentials │  │ executions │ │
+│  ├──────────┤  ├──────────┤  ├──────────┤  ├─────────────┤  ├────────────┤ │
+│  │ id (PK)  │  │ id (PK)  │  │ id (PK)  │  │ id (PK)     │  │ id (PK)    │ │
+│  │ email    │  │ user_id  │  │ user_id  │  │ user_id     │  │ user_id    │ │
+│  │ name     │  │ title    │  │ idea_id  │  │ provider    │  │ idea_id    │ │
+│  │ ...      │  │ status   │  │ format   │  │ encrypted   │  │ status     │ │
+│  └────┬─────┘  │ ...      │  │ content  │  │ ...         │  │ ...        │ │
+│       │        └────┬─────┘  └──────────┘  └─────────────┘  └────────────┘ │
+│       └─────────────┼───────────────────────────────────────────────────────┤
+│                     │           Row-Level Security (RLS) Enabled             │
+│                     │           Users only access their own data             │
+│                     └────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Security:                                                                   │
+│  - GitHub OAuth tokens encrypted with AES-256-GCM                            │
+│  - Per-user data isolation via RLS policies                                  │
+│  - Service role key used by backend only (never exposed)                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                              EXTERNAL SERVICES
+================================================================================
+
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐
+│   OpenAI     │  │  Anthropic   │  │   fal.ai     │  │   GitHub API         │
+│   API        │  │   API        │  │   / HugFace  │  │   (Octokit)          │
+├──────────────┤  ├──────────────┤  ├──────────────┤  ├──────────────────────┤
+│ GPT-4o-mini  │  │ Claude       │  │ FLUX Schnell │  │ Per-user OAuth       │
+│ (planning +  │  │ Sonnet 4.5   │  │ (image gen)  │  │ Repo creation        │
+│  review)     │  │ (generation) │  │              │  │ File uploads         │
+└──────────────┘  └──────────────┘  └──────────────┘  └──────────────────────┘
+
+================================================================================
+                                 DATA FLOW
+================================================================================
+
+User Action (Click "Expand")
+    │
+    ├─▶ POST /api/expand { ideaId }
+    │
+    ├─▶ API validates user session (NextAuth)
+    │
+    ├─▶ LangGraph pipeline invoked
+    │       │
+    │       ├─▶ Router Agent decides format
+    │       │
+    │       ├─▶ Creator Agent generates content
+    │       │       │
+    │       │       ├─▶ AI model calls (OpenAI, Anthropic)
+    │       │       ├─▶ Image generation (fal.ai)
+    │       │       └─▶ GitHub publishing (if code)
+    │       │
+    │       └─▶ Returns structured JSON
+    │
+    ├─▶ Save output to Supabase
+    │
+    ├─▶ Update execution record
+    │
+    └─▶ Return outputId to frontend → Redirect to /outputs/[id]
+
+================================================================================
+                              KEY DESIGN PRINCIPLES
+================================================================================
+
+1. Schema-Driven: Zod schemas validate ALL structured data
+2. Per-User Publishing: Each user publishes to THEIR GitHub, not owner's
+3. Quality Gates: Code must score ≥75 before publishing
+4. Cell-Based Blogs: Structured cells, not markdown strings
+5. Fail-Fast: Errors throw immediately, no silent failures
+6. Type-Safe: TypeScript + Zod = runtime type safety
+
+================================================================================
 ```
 
 ### Component Responsibilities
@@ -599,6 +753,18 @@ Score >= 75?
 
 ## Database Schema
 
+**See [DATABASE.md](./DATABASE.md) for the complete database setup and management guide.**
+
+This section provides a high-level overview. For detailed information about:
+- Initial database setup
+- Table and column definitions
+- Row-Level Security (RLS) policies
+- Usage tracking & credit system
+- Management scripts and operations
+- Backup & recovery procedures
+
+Please refer to [DATABASE.md](./DATABASE.md).
+
 ### Entity Relationship Diagram
 
 ```
@@ -606,7 +772,6 @@ Score >= 75?
 │    users     │
 ├──────────────┤
 │ id (PK)      │──┐
-│ clerk_user_id│  │
 │ email        │  │
 │ name         │  │
 │ timezone     │  │
@@ -653,7 +818,6 @@ Score >= 75?
 ```sql
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  clerk_user_id TEXT UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
   name TEXT,
   timezone TEXT DEFAULT 'UTC',
@@ -661,7 +825,7 @@ CREATE TABLE users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_clerk_id ON users(clerk_user_id);
+CREATE INDEX idx_users_email ON users(email);
 ```
 
 #### `ideas`
@@ -770,14 +934,16 @@ ALTER TABLE executions ENABLE ROW LEVEL SECURITY;
 -- Users can only access their own data
 CREATE POLICY "Users can view own ideas"
   ON ideas FOR SELECT
-  USING (user_id IN (
-    SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'
-  ));
+  USING (user_id = auth.uid());
 
--- Similar policies for INSERT, UPDATE, DELETE on all tables
+CREATE POLICY "Users can insert own ideas"
+  ON ideas FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Similar policies for all operations on all tables
 ```
 
-**Note**: Currently using `SUPABASE_SERVICE_ROLE_KEY` which bypasses RLS. In production, use Supabase Auth with user tokens.
+**Note**: RLS enforced via NextAuth session management. Server-side API validates user context before database operations.
 
 ---
 
@@ -907,32 +1073,18 @@ Every model choice balances three factors:
 | Task | Model | Cost/1M Input | Speed | Quality | Why? |
 |------|-------|---------------|-------|---------|------|
 | **Router** | GPT-4o-mini | $0.15 | Fast (~500ms) | Good | Simple decision, no creativity needed |
-| **Blog Planning** | GPT-5 Nano | $0.10 | Ultra-fast (<300ms) | Excellent | Structured reasoning, forced T=1.0 |
+| **Blog Planning** | GPT-4o-mini | $0.15 | Fast (<500ms) | Good | Fast structured reasoning |
 | **Blog Generation** | Claude Sonnet 4.5 | $3.00 | Moderate (~3s) | Best | Superior writing, handles schemas |
 | **Code Planning** | GPT-4o-mini | $0.15 | Fast | Good | Quick architectural decisions |
 | **Code Generation** | Claude Sonnet 4.5 | $3.00 | Moderate | Best | Top-rated code quality (LMSYS) |
 | **Review** | GPT-4o-mini | $0.15 | Fast | Good | Consistent evaluation, no creativity |
 | **Image** | FLUX Schnell | $0.001/img | Fast (~2s) | High | Photorealistic, reliable |
 
-### Why Not Use GPT-5 Opus or Claude Opus 4.5?
-
-**GPT-5 Opus** (most powerful OpenAI model):
-- ❌ Cost: $15/1M input tokens (100x more than mini)
-- ❌ Speed: 5-10s per request
-- ✅ Quality: Marginally better than Sonnet 4.5
-- **Verdict**: Not worth the 5x cost increase for our use case
-
-**Claude Opus 4.5** (most powerful Anthropic model):
-- ❌ Cost: $15/1M input tokens (5x more than Sonnet)
-- ❌ Speed: 4-8s per request
-- ✅ Quality: Better reasoning, longer context
-- **Verdict**: Overkill for our content generation needs
-
 ### Why Claude Sonnet 4.5 for Generation?
 
 **Benchmarks** (LMSYS Chatbot Arena, Dec 2025):
-- Code generation: #1 (beats GPT-5 Opus)
-- Creative writing: #2 (beats all GPT models)
+- Code generation: #1 across major models
+- Creative writing: #2 (excellent quality)
 - Following instructions: #1
 - Structured output: Excellent (Zod schemas work reliably)
 
@@ -946,7 +1098,7 @@ Every model choice balances three factors:
 | Task | Temperature | Rationale |
 |------|-------------|-----------|
 | Router | 0.5 | Consistent decisions, slight creativity |
-| Planning | 1.0 | GPT-5 Nano only supports T=1.0 |
+| Planning | 0.7 | Fast structured reasoning |
 | Blog Generation | 0.8 | Creative writing, varied expression |
 | Code Generation | 0.7 | Balance between creativity & correctness |
 | Review | 0.5 | Consistent evaluations |
@@ -1281,5 +1433,15 @@ Phase 2.4: Vercel Production Deployment
 **Last Updated**: January 22, 2026
 **Version**: V3 (Cell-Based Architecture)
 **Status**: Development (localhost) → Production deployment planned
+
+---
+
+## See Also
+
+- **[DATABASE.md](./DATABASE.md)** - Complete database setup and management guide
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment to Vercel
+- **[ADMIN_TOOLS.md](./ADMIN_TOOLS.md)** - Admin tools and user management
+- **[ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md)** - Environment configuration reference
+- **[README.md](../README.md)** - Project overview and getting started guide
 
 For questions or contributions, see [README.md](./README.md)

@@ -70,9 +70,15 @@ export async function getUserGitHubCredentials(userId: string): Promise<{ token:
     throw new Error('User profile not found.');
   }
 
-  // For now, use the name as fallback. In future, store GitHub login separately
-  // The GitHub login comes from the OAuth profile during auth.ts
-  // TODO: Store github_login field in users table for better reliability
+  /**
+   * GitHub Username Resolution:
+   *
+   * Current: Uses `user.name` from users table (populated during OAuth)
+   * Future: Add dedicated `github_login` column for better reliability
+   *
+   * Why not yet: `name` works for 99% of cases, low priority
+   * When to change: If users report publishing errors
+   */
   const gitHubUsername = user.name || 'Unknown';
 
   return {

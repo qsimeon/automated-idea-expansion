@@ -69,10 +69,19 @@ export const authOptions: NextAuthOptions = {
      * Add custom fields to the token (like userId from database)
      */
     async jwt({ token, account, profile }) {
-      // On initial sign-in, account and profile are available
-      if (account && profile) {
+      console.log('🔐 JWT callback triggered', {
+        hasAccount: !!account,
+        hasProfile: !!profile,
+        email: token.email
+      });
+
+      // CRITICAL: Ensure we always have a userId on token
+      // This is used by RLS policies to isolate user data
+      if (!token.userId) {
+        console.log('📋 First time sign-in detected, creating/getting user...');
+
         // Get or create user in database
-        const { data: existingUser } = await supabaseAdmin
+        const { data: existingUser, error: selectError } = await supabaseAdmin
           .from('users')
           .select('id')
           .eq('email', token.email!)
@@ -80,54 +89,73 @@ export const authOptions: NextAuthOptions = {
 
         let userId: string;
 
+        if (selectError && selectError.code !== 'PGRST116') {
+          // PGRST116 = no rows found (expected if user doesn't exist)
+          console.error('❌ JWT callback: Error checking user existence:', selectError);
+          throw new Error(`Failed to check user: ${selectError.message}`);
+        }
+
         if (existingUser) {
-          // User exists
+          // User already exists
           userId = existingUser.id;
           console.log('✅ JWT callback: User already exists', { userId, email: token.email });
         } else {
-          // Create new user
-          try {
-            const { data: newUser, error } = await supabaseAdmin
-              .from('users')
-              .insert({
-                email: token.email!,
-                name: token.name || (profile as any).login || 'GitHub User',
-                timezone: 'UTC',
-              })
-              .select('id')
-              .single();
+          // Create new user (this is required)
+          console.log('📝 Creating new user:', token.email);
 
-            if (error || !newUser) {
-              console.error('❌ JWT callback: Failed to create user:', error);
-              throw new Error(`Failed to create user account: ${error?.message || 'Unknown error'}`);
-            }
+          const { data: newUser, error: createError } = await supabaseAdmin
+            .from('users')
+            .insert({
+              email: token.email!,
+              name: token.name || (profile as any)?.login || 'GitHub User',
+              timezone: 'UTC',
+            })
+            .select('id')
+            .single();
 
-            userId = newUser.id;
-            console.log('✅ JWT callback: New user created', { userId, email: token.email });
-
-            // Create usage tracking record (5 free expansions)
-            const { error: usageError } = await supabaseAdmin.from('usage_tracking').insert({
-              user_id: userId,
-              free_expansions_remaining: 5,
+          if (createError || !newUser) {
+            console.error('❌ JWT callback: Failed to create user:', {
+              error: createError,
+              message: createError?.message,
+              details: createError?.details,
             });
-
-            if (usageError) {
-              console.error('❌ JWT callback: Failed to create usage tracking:', usageError);
-              throw new Error(`Failed to create usage tracking: ${usageError.message}`);
-            }
-            console.log('✅ JWT callback: Usage tracking created');
-          } catch (err) {
-            console.error('❌ JWT callback error during user creation:', err);
-            throw err;
+            throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
           }
+
+          userId = newUser.id;
+          console.log('✅ JWT callback: New user created', { userId, email: token.email });
+
+          // IMPORTANT: Trigger should auto-create usage_tracking, but verify it exists
+          const { data: usage, error: usageCheckError } = await supabaseAdmin
+            .from('usage_tracking')
+            .select('id')
+            .eq('user_id', userId)
+            .single();
+
+          if (!usage) {
+            // Trigger didn't work, create it manually
+            console.warn('⚠️  Usage tracking trigger didn\'t fire, creating manually...');
+            const { error: manualUsageError } = await supabaseAdmin
+              .from('usage_tracking')
+              .insert({
+                user_id: userId,
+                free_expansions_remaining: 5,
+              });
+
+            if (manualUsageError) {
+              console.error('❌ JWT callback: Failed to create usage tracking:', manualUsageError);
+              throw new Error(`Failed to create usage tracking: ${manualUsageError.message}`);
+            }
+          }
+          console.log('✅ JWT callback: Usage tracking ensured', { userId });
         }
 
         // Store GitHub token (encrypted)
-        if (account.access_token) {
+        if (account?.access_token) {
           try {
+            console.log('🔒 Encrypting and storing GitHub token...');
             const encryptedToken = encryptToJSON(account.access_token);
 
-            // Upsert credential (insert or update if exists)
             const { error: credError } = await supabaseAdmin
               .from('credentials')
               .upsert(
@@ -153,13 +181,15 @@ export const authOptions: NextAuthOptions = {
             throw err;
           }
         } else {
-          console.warn('⚠️ JWT callback: No GitHub access token in account object');
+          console.warn('⚠️  No GitHub access token available');
         }
 
-        // Add userId to token for session
+        // CRITICAL: Add userId to token
         token.userId = userId;
-        token.sub = userId; // Add standard OpenID Connect 'sub' claim
-        console.log('✅ JWT callback: Token created with userId', { userId });
+        token.sub = userId;
+        console.log('✅ JWT callback: Token configured with userId', { userId, email: token.email });
+      } else {
+        console.log('✅ JWT callback: User already in token', { userId: token.userId });
       }
 
       return token;

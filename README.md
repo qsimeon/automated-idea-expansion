@@ -26,13 +26,13 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
 - ✅ **Creator Agents** - Generates content in **2 formats**:
   - 📝 **Blog Posts** - 4-stage cell-based pipeline with images + social share:
-    - Planning (GPT-5 Nano) → sections, tone, image specs
+    - Planning (GPT-4o-mini) → sections, tone, image specs
     - Generation (Claude Sonnet 4.5) → cell-based content (MarkdownCell + ImageCell) + 1-3 images
     - Social Share (integrated) → auto-generated tweet (280 chars max, 2-3 hashtags)
     - Review (GPT-4o-mini) → quality scoring
     - **Architecture:** Atomic content blocks, no markdown string manipulation
   - 💻 **Code Projects** - 5-stage pipeline with iteration:
-    - Planning (GPT-5 Nano) → quality rubrics, implementation steps
+    - Planning (GPT-4o-mini) → quality rubrics, implementation steps
     - Generation (Claude Sonnet 4.5) → all files with structured outputs
     - Review (GPT-4o-mini) → actionable feedback
     - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
@@ -64,7 +64,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
   - Context-aware generation (images understand blog content)
   - Up to 3 images per blog with captions and alt text
 - ✅ **Optimized Model Selection**:
-  - GPT-5 Nano for planning (fast, cost-effective, temperature=1 only)
+  - GPT-4o-mini for planning (fast, cost-effective, low cost)
   - Claude Sonnet 4.5 for blog generation (handles complex nested schemas)
   - GPT-4o-mini for review/routing/judging
   - Direct model instantiation (removed model-factory abstraction)
@@ -128,10 +128,10 @@ Code Pipeline:
 ```
 Plan → Generate (Cells) → Social → Review
   ↓         ↓                ↓        ↓
-GPT-5   Claude          Integrated  GPT-4o
-Nano    Sonnet 4.5                  mini
+GPT-4o- Claude          Integrated  GPT-4o
+mini    Sonnet 4.5                  mini
 ```
-- **Stage 1 (Plan):** Decide title, sections, tone, image specs (GPT-5 Nano)
+- **Stage 1 (Plan):** Decide title, sections, tone, image specs (GPT-4o-mini)
 - **Stage 2 (Generate):** Create cell-based content (MarkdownCell + ImageCell) + images (Claude Sonnet 4.5)
 - **Stage 3 (Social):** Auto-generate tweet with hashtags (integrated in generation)
 - **Stage 4 (Review):** Score on clarity, accuracy, engagement, structure (GPT-4o-mini)
@@ -140,8 +140,8 @@ Nano    Sonnet 4.5                  mini
 ```
 Plan → Generate → Review → Iterate? → Publish
   ↓       ↓         ↓         ↓          ↓
-GPT    Claude    GPT    Score<75?    GitHub
-mini   Sonnet    mini   Fix/Regen    (or dry-run)
+GPT-4o Claude    GPT-4o  Score<75?    GitHub
+mini   Sonnet    mini    Fix/Regen    (or dry-run)
 ```
 - **Stage 1 (Plan):** Decide output type, language, architecture, quality rubric
 - **Stage 2 (Generate):** Create all files, README, dependencies
@@ -154,7 +154,7 @@ mini   Sonnet    mini   Fix/Regen    (or dry-run)
 | Task | Model | Why? |
 |------|-------|------|
 | Router | GPT-4o-mini | Fast, cheap ($0.15/1M input), good routing decisions |
-| Blog Planning | GPT-5 Nano | Ultra-fast structured reasoning (T=1.0 only) |
+| Blog Planning | GPT-4o-mini | Fast, cost-effective, low cost |
 | Blog Generation | Claude Sonnet 4.5 | Superior writing quality, handles complex schemas |
 | Code Planning | GPT-4o-mini | Fast, cost-effective, good at structure |
 | Code Generation | Claude Sonnet 4.5 | Best at code (benchmarks leader, $3/1M input) |
@@ -163,7 +163,6 @@ mini   Sonnet    mini   Fix/Regen    (or dry-run)
 ### Typical Costs Per Expansion
 
 - **Blog Post:** ~$0.019 (planning + writing + 3 images + review)
-- **Mastodon Thread:** ~$0.010 (planning + 5-10 posts + review)
 - **Code Project:** $0.016-0.034 (depends on iterations, GitHub publishing)
 
 ---
@@ -306,40 +305,70 @@ Example of a successful blog expansion:
    - Run `scripts/setup-db.sql` in SQL Editor
    - Copy connection details to `.env.local`
 
-3. **Configure GitHub OAuth:**
-   - Go to https://github.com/settings/developers
-   - Create a new OAuth App
-   - Set callback URL to `http://localhost:3000/api/auth/callback/github`
-   - Copy Client ID and Client Secret to `.env.local`
+3. **Configure GitHub OAuth (CRITICAL - You MUST use YOUR OWN OAuth app):**
 
-4. **Test user account:**
+   **Why**: This allows users to publish to THEIR OWN GitHub accounts, not yours.
+
+   **Steps:**
+   a. Go to https://github.com/settings/developers
+   b. Click "New OAuth App"
+   c. Fill in:
+      - Application name: "Automated Idea Expansion (Local Dev)"
+      - Homepage URL: `http://localhost:3000`
+      - Authorization callback URL: `http://localhost:3000/api/auth/callback/github`
+   d. Click "Register application"
+   e. Click "Generate a new client secret"
+   f. Copy both Client ID and Client Secret to your `.env.local` (see step 4)
+
+   **Important Notes:**
+   - DO NOT use someone else's OAuth credentials
+   - Each developer should create their own OAuth app
+   - For production deployment, create a separate OAuth app with your production domain
+   - The callback URL MUST match exactly (including http vs https and port)
+
+4. **Create test user account:**
    - Users are created automatically on first GitHub OAuth sign-in
+   - Click "Sign in with GitHub" at `http://localhost:3000` to create your account
    - No manual SQL insert needed!
 
-5. **Add API keys to `.env.local`:**
+5. **Configure environment variables in `.env.local`:**
+
+   Copy `.env.example` to `.env.local` and fill in all values:
    ```bash
-   # Supabase
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-   # GitHub OAuth (from step 3)
-   GITHUB_CLIENT_ID=your_client_id
-   GITHUB_CLIENT_SECRET=your_client_secret
-   NEXTAUTH_SECRET=generated_secret
-   NEXTAUTH_URL=http://localhost:3000
-   ENCRYPTION_KEY=your_64_char_hex_string
-
-   # AI Models (Required)
-   OPENAI_API_KEY=sk-proj-...           # For planning & review
-   ANTHROPIC_API_KEY=sk-ant-...         # For code generation
-
-   # Image Generation (Optional)
-   FAL_KEY=...
-   HUGGINGFACE_API_KEY=hf_...
-   REPLICATE_API_TOKEN=r8_...
+   cp .env.example .env.local
    ```
-   See `docs/ENVIRONMENT_VARIABLES.md` for detailed setup.
+
+   **Required Variables** (app won't start without these):
+   ```bash
+   # Supabase Database (from step 2)
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
+   SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...
+
+   # GitHub OAuth (from step 3 - YOUR OWN OAuth app)
+   GITHUB_CLIENT_ID=Iv1.abc123def456
+   GITHUB_CLIENT_SECRET=1234567890abcdef...
+
+   # NextAuth Configuration
+   NEXTAUTH_SECRET=$(openssl rand -base64 32)  # Run this command
+   NEXTAUTH_URL=http://localhost:3000
+
+   # Encryption for GitHub tokens
+   ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+
+   # AI Models (REQUIRED)
+   OPENAI_API_KEY=sk-proj-...              # https://platform.openai.com/api-keys
+   ANTHROPIC_API_KEY=sk-ant-...            # https://console.anthropic.com/
+   ```
+
+   **Optional Variables** (for image generation):
+   ```bash
+   FAL_KEY=...                             # https://fal.ai/dashboard
+   HUGGINGFACE_API_KEY=hf_...             # https://huggingface.co/settings/tokens
+   REPLICATE_API_TOKEN=r8_...             # https://replicate.com/account
+   ```
+
+   See `docs/ENVIRONMENT_VARIABLES.md` for detailed explanations.
 
 6. **Run development server:**
    ```bash
@@ -405,7 +434,7 @@ Blog Creator V3            Code Creator V2
 
 The code creator uses a sophisticated multi-stage approach with quality iteration loops:
 
-1. **Planning Agent** (GPT-5 Nano with Zod structured outputs)
+1. **Planning Agent** (GPT-4o-mini with Zod structured outputs)
    - Analyzes idea requirements
    - Decides: notebook, CLI app, web app, library, or demo script
    - Chooses language: Python, JavaScript, TypeScript, Rust
@@ -420,7 +449,7 @@ The code creator uses a sophisticated multi-stage approach with quality iteratio
    - Includes examples and documentation
    - Uses Zod schemas to guarantee valid output
 
-3. **Critic Agent** (GPT-5 Nano with structured outputs)
+3. **Critic Agent** (GPT-4o-mini with structured outputs)
    - Reviews against quality rubrics
    - Checks security vulnerabilities
    - Validates best practices
@@ -545,7 +574,7 @@ All tables have Row-Level Security (RLS) enabled.
 | Agent | Model | Avg Tokens | Cost |
 |-------|-------|-----------|------|
 | Router | GPT-4o-mini | ~500 | $0.00005 |
-| Blog Planning | GPT-5 Nano | ~1,500 | $0.00015 |
+| Blog Planning | GPT-4o-mini | ~1,500 | $0.00023 |
 | Blog Generation | Claude Sonnet 4.5 | ~5,000 | $0.015 |
 | Images (3x) | FLUX Schnell | N/A | $0.003 |
 | Review | GPT-4o-mini | ~1,000 | $0.0001 |
@@ -566,7 +595,7 @@ All tables have Row-Level Security (RLS) enabled.
 - 100 expansions/month (mixed) = **~$1.50/month**
 
 Extremely cost-effective thanks to:
-- **GPT-5 Nano** ($0.10/1M input tokens) - Ultra-cheap for planning & review
+- **GPT-4o-mini** ($0.15/1M input tokens) - Fast and cheap for planning & review
 - **Claude Sonnet 4.5** ($3/1M input tokens) - Best-in-class code generation
 - **Structured outputs** - Eliminates wasted tokens from parsing errors
 - **Targeted fixes** - Only regenerate 1-3 files per iteration, not entire project
@@ -580,15 +609,15 @@ Extremely cost-effective thanks to:
 | Next.js 15 | Full-stack React framework | ✅ |
 | TypeScript | Type-safe development | ✅ |
 | Supabase | PostgreSQL database with RLS | ✅ |
+| **NextAuth** | **GitHub OAuth authentication** | ✅ |
 | **LangGraph** | **Multi-agent orchestration** | ✅ |
 | **Zod** | **Schema validation & structured outputs** | ✅ |
-| **OpenAI GPT-5 Nano** | **Planning, routing, review (ultra-cheap!)** | ✅ |
+| **OpenAI GPT-4o-mini** | **Planning, routing, review** | ✅ |
 | **Claude Sonnet 4.5** | **Code generation (best-in-class)** | ✅ |
 | **fal.ai / HuggingFace** | **AI image generation** | ✅ |
 | **Octokit** | **GitHub API for repo creation** | ✅ |
-| masto.js | Mastodon API for thread posting | ⏳ Next |
 | E2B | Code sandboxing | ⏳ Future |
-| Vercel | Hosting & cron jobs | ⏳ Future |
+| Vercel | Hosting & cron jobs | ⏳ Ready |
 
 ---
 
@@ -642,7 +671,7 @@ Extremely cost-effective thanks to:
 - ✅ API keys stored in `.env.local` (never committed)
 - ✅ Input validation on all endpoints
 - ✅ Secure async params handling (Next.js 15)
-- ⏳ Clerk authentication (disabled for development)
+- ✅ GitHub OAuth authentication
 
 ---
 
@@ -748,6 +777,49 @@ This is a learning project following a comprehensive implementation plan. Each p
    - Tutorial: "How to deploy a Next.js app"
 
 The Router Agent will automatically choose the best format (blog or code) for each idea!
+
+---
+
+## 📚 Documentation
+
+Complete guides for setup, deployment, and administration:
+
+- **[Database Setup & Management](./docs/DATABASE.md)** - Complete database guide
+  - Initial setup from scratch
+  - Table schema and relationships
+  - Row-Level Security (RLS)
+  - Usage tracking & credit system
+  - Management scripts and common operations
+  - Backup & recovery procedures
+
+- **[Deployment Guide](./docs/DEPLOYMENT.md)** - Deploy to Vercel
+  - Environment variables (backend vs per-user)
+  - Vercel project setup
+  - GitHub OAuth configuration
+  - Buy Me a Coffee integration
+  - Post-deployment testing
+  - Monitoring and troubleshooting
+
+- **[Admin Tools](./docs/ADMIN_TOOLS.md)** - Manage users and credits
+  - Seed admin user
+  - Check user usage
+  - Grant credits manually
+  - Database debugging
+  - User management
+  - Analytics and monitoring
+
+- **[Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)** - Configuration reference
+  - All environment variables explained
+  - How to generate secrets
+  - Per-environment setup
+  - Troubleshooting guide
+
+- **[Architecture Overview](./docs/ARCHITECTURE.md)** - System design
+  - High-level architecture
+  - Agent pipeline details
+  - Model selection strategy
+  - Security architecture
+  - Database schema
 
 ---
 

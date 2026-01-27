@@ -1,22 +1,71 @@
 /**
- * Admin Script: Grant Credits
+ * Admin Script: Grant Credits to User
  *
- * Run this after verifying a Buy Me a Coffee payment to grant credits to a user
+ * DESCRIPTION:
+ * Grants paid credits to a user after verifying Buy Me a Coffee payment.
+ * Creates a payment receipt for audit trail and sends confirmation.
  *
- * Usage:
+ * USAGE:
  *   npx tsx scripts/admin/grant-credits.ts <email> <credits> <amount> [bmc_reference] [notes]
  *
- * Examples:
- *   # Grant 1 credit after $1 payment
+ * EXAMPLES:
+ *   # Grant 1 credit after $1 payment from John Doe
  *   npx tsx scripts/admin/grant-credits.ts user@example.com 1 1.00 "John Doe via BMC"
  *
- *   # Grant 10 credits (bulk purchase)
+ *   # Grant 10 credits (bulk purchase) with BMC reference
  *   npx tsx scripts/admin/grant-credits.ts user@example.com 10 10.00 "BMC-12345" "Bulk purchase"
  *
- * Requirements:
- *   - User must already exist in database (signed up)
- *   - You must verify BMC payment before running this
- *   - Database connection must be configured (.env.local)
+ *   # Grant 5 credits with detailed notes
+ *   npx tsx scripts/admin/grant-credits.ts jane@example.com 5 5.00 "BMC-12346" "Email verification successful"
+ *
+ * ARGUMENTS:
+ *   email           - User email (must be registered)
+ *   credits         - Number of credits to grant (positive integer)
+ *   amount          - USD amount paid (positive number)
+ *   bmc_reference   - (Optional) BMC reference or supporter name
+ *   notes           - (Optional) Admin notes for audit trail
+ *
+ * PREREQUISITES:
+ *   - User must already exist in database (must have signed up)
+ *   - .env.local with SUPABASE_SERVICE_ROLE_KEY
+ *   - Database must have usage_tracking table (run migration 002)
+ *   - You must have verified the Buy Me a Coffee payment first!
+ *
+ * PROCESS:
+ *   1. Look up user by email
+ *   2. Verify user exists and has usage tracking
+ *   3. Show current credits
+ *   4. Call add_paid_credits() database function
+ *   5. Verify credits were added
+ *   6. Display confirmation and email template
+ *
+ * WORKFLOW:
+ *   1. User visits Buy Me a Coffee and makes payment
+ *   2. You receive email notification from Buy Me a Coffee
+ *   3. Verify the payment details match
+ *   4. Run this script: npx tsx scripts/admin/grant-credits.ts user@email.com 5 5.00 "BMC-xxx"
+ *   5. Script displays email template to send to user
+ *   6. (Optional) Send the email to user
+ *
+ * OUTPUT:
+ *   ✅ Credits granted successfully!
+ *   Receipt ID: <uuid>
+ *   New paid credits: 100
+ *   Total available: 105
+ *
+ *   📧 Consider emailing the user...
+ *
+ * TROUBLESHOOTING:
+ *   - "User not found" → Check email spelling, user must sign up first
+ *   - "Usage tracking not found" → Run migration 002 first
+ *   - "Failed to grant credits" → Check .env.local credentials
+ *   - "Amount must be positive" → Use format: 5.00 (not 500)
+ *
+ * See Also:
+ *   - Admin tools: docs/ADMIN_TOOLS.md
+ *   - Database setup: docs/DATABASE.md
+ *   - Deployment guide: docs/DEPLOYMENT.md
+ *   - Payment process: docs/ADMIN_TOOLS.md#payment-verification
  */
 
 import { createClient } from '@supabase/supabase-js';

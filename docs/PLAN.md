@@ -118,7 +118,7 @@ Instead of generating markdown strings, we generate **structured cells** that ar
 
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 1: PLANNING                                       │
-│  Model: GPT-5 Nano (T=1.0, only supported temp)          │
+│  Model: GPT-4o-mini (T=0.7)                              │
 │                                                          │
 │  Decisions:                                              │
 │  - Title (can refine original)                           │
@@ -398,7 +398,7 @@ cells[2].blocks[0].text = "Updated heading";
 | Task | Model | Temperature | Rationale |
 |------|-------|-------------|-----------|
 | **Router** | GPT-4o-mini | 0.5 | Fast, consistent format routing |
-| **Blog Planning** | GPT-5 Nano | 1.0 | Only supported temp; excellent structured reasoning |
+| **Blog Planning** | GPT-4o-mini | 0.7 | Fast, cost-effective structured reasoning |
 | **Blog Generation** | Claude Sonnet 4.5 | 0.8 | Best writing quality, handles complex schemas |
 | **Code Planning** | GPT-4o-mini | 0.7 | Fast, good architectural decisions |
 | **Code Generation** | Claude Sonnet 4.5 | 0.7 | Top-rated for code (LMSYS benchmarks) |
@@ -408,10 +408,10 @@ cells[2].blocks[0].text = "Updated heading";
 
 ### Why These Choices?
 
-**GPT-5 Nano** (Planning):
-- Specialized for fast, structured reasoning
-- Cost-effective for repeated planning calls
-- Only supports temperature=1.0 (no choice)
+**GPT-4o-mini** (Planning & Routing):
+- Fast, cost-effective structured reasoning
+- Excellent performance on planning and review tasks
+- Reliable temperature control (0.5-1.0 supported)
 
 **Claude Sonnet 4.5** (Content & Code):
 - Superior writing quality vs GPT models
@@ -681,7 +681,7 @@ Expands a user-selected idea into content.
 - [Zod Schema Validation](https://zod.dev/)
 - [fal.ai Image Generation](https://fal.ai/models/fal-ai/flux/schnell)
 - [Claude Sonnet 4.5 Release Notes](https://www.anthropic.com/news/claude-sonnet-4-5)
-- [GPT-5 Nano Overview](https://openai.com/blog/gpt-5-nano)
+- [OpenAI GPT-4o-mini Documentation](https://platform.openai.com/docs/models)
 
 ### Internal Documentation
 
@@ -689,11 +689,10 @@ Expands a user-selected idea into content.
 - **README.md** - User-facing setup and usage guide
 - **Inline comments** - Most files have detailed explanations
 
-### Version History
+### Document Status
 
-**V3 (Current)** - Cell-based blog architecture, social posts, Judge removal
-**V2** - Multi-stage pipelines, quality reviews, iterative refinement
-**V1** - Simple prompt → LLM → output (no structure, no validation)
+This plan reflects the **current production-ready state** as of January 2026.
+For historical architecture decisions, see git history.
 
 ---
 

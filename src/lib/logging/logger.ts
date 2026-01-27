@@ -156,10 +156,16 @@ export class Logger {
       });
     }
 
-    // TODO: In production, also write to:
-    // - File system for persistent logs
-    // - External logging service (Datadog, Splunk, etc.)
-    // - Database for queryable logs
+    /**
+     * Production Logging Strategy (Future Enhancement):
+     *
+     * Current: Console output only (captured by Vercel logs)
+     * Future Options:
+     * - Vercel Log Drains → External service (Datadog, Logtail)
+     * - Structured logging → Database for queryable traces
+     *
+     * For now, Vercel captures all console output in the Logs tab.
+     */
   }
 }
 
