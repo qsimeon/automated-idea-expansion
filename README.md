@@ -782,22 +782,25 @@ The Router Agent will automatically choose the best format (blog or code) for ea
 
 ## 📚 Documentation
 
-Complete guides for setup, deployment, and administration:
+Complete guides for setup, architecture, and deployment:
+
+- **[System Overview](./docs/SYSTEM_OVERVIEW.md)** - Complete system architecture
+  - Component breakdown
+  - Execution flows for each content type
+  - File structure and navigation
+  - Technology stack
+  - Data flow diagrams
 
 - **[Database Setup & Management](./docs/DATABASE.md)** - Complete database guide
   - Initial setup from scratch
   - Table schema and relationships
   - Row-Level Security (RLS)
-  - Usage tracking & credit system
-  - Management scripts and common operations
-  - Backup & recovery procedures
+  - Admin operations and credit management
 
 - **[Deployment Guide](./docs/DEPLOYMENT.md)** - Deploy to Vercel
-  - Environment variables (backend vs per-user)
-  - Vercel project setup
+  - Environment variables
   - GitHub OAuth configuration
-  - Buy Me a Coffee integration
-  - Post-deployment testing
+  - Production deployment checklist
   - Monitoring and troubleshooting
 
 
