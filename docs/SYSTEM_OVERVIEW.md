@@ -13,44 +13,156 @@ This document provides the **complete system architecture** and component refere
 
 ---
 
-## High-Level Architecture
+## Complete System Architecture Diagram
 
 ```
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                      FRONTEND LAYER                               ┃
-┃            (Next.js 16 / React 19 / Server Components)            ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  [/ideas] [/outputs] [/auth/signin]  →  Idea submission & results ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                                  │
-                                  ↓
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                       API LAYER                                   ┃
-┃  (/api/expand, /api/ideas/*, /api/outputs/*, /api/auth/*)        ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  • Auth check (NextAuth JWT + DB validation)                     ┃
-┃  • Credit validation (free + paid)                               ┃
-┃  • CRUD operations (ideas, outputs)                              ┃
-┃  • Orchestrator invocation                                       ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                                  │
-                                  ↓
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                  LANGGRAPH ORCHESTRATOR                           ┃
-┃   (src/lib/agents/graph.ts - StateGraph Executor)                ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃                                                                   ┃
-┃  Router Agent → Creator Agent → Format-Specific Creators         ┃
-┃  (GPT-4o-mini)  (Orchestrator)  (Blog or Code)                   ┃
-┃                                                                   ┃
-┃  Each agent receives AgentState with execution context           ┃
-┃  and outputs updated state for next agent                        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-     │              │                    │                    │
-     ↓              ↓                    ↓                    ↓
- OpenAI       Anthropic          FAL.ai / HF           GitHub API
- (GPT-4o      (Claude            (Image Gen)           (Publish
-  models)     models)
+════════════════════════════════════════════════════════════════════════════════
+                   AUTOMATED IDEA EXPANSION ARCHITECTURE
+════════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND (Next.js)                               │
+│                                                                               │
+│  ┌────────────┐        ┌────────────┐        ┌────────────────────────────┐  │
+│  │   /ideas   │        │  /outputs  │        │    /outputs/[id]           │  │
+│  │            │        │            │        │                            │  │
+│  │ List Ideas │───────▶│ List All   │───────▶│ View Blog/Code Output      │  │
+│  │ + Expand   │        │ Outputs    │        │ (Format-Specific Renderer) │  │
+│  └────────────┘        └────────────┘        └────────────────────────────┘  │
+│       │                                                                       │
+│       │ POST /api/expand { ideaId }                                          │
+└───────┼────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                             API LAYER (Route Handlers)                        │
+│                                                                               │
+│  POST /api/expand      GET /api/ideas       DELETE /api/outputs              │
+│  POST /api/ideas       PUT /api/ideas       GET /api/outputs                 │
+│  NextAuth callbacks   GitHub OAuth flow                                      │
+│                                                                               │
+│  All requests authenticated via NextAuth JWT sessions                         │
+└───────┬────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       AGENT ORCHESTRATION (LangGraph)                         │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                         Agent State (Shared)                           │  │
+│  │  { userId, selectedIdea, chosenFormat, generatedContent, errors[] }   │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│         START → [Router Agent] → [Creator Agent] → END                        │
+│                       ↓                   ↓                                   │
+│                  GPT-4o-mini          Routes to format:                       │
+│                  Decides format       - Blog Creator                          │
+│                  (blog/code)          - Code Creator                          │
+│                                                                               │
+│  ┌──────────────────────────────────┐  ┌───────────────────────────────────┐ │
+│  │  BLOG CREATOR (4 stages)         │  │  CODE CREATOR (5 stages)          │ │
+│  │                                  │  │                                   │ │
+│  │  1. Plan (GPT-4o-mini)           │  │  1. Plan (GPT-4o-mini)            │ │
+│  │     → Sections, tone, images     │  │     → Language, files, rubric     │ │
+│  │                                  │  │                                   │ │
+│  │  2. Generate (Claude Sonnet 4.5) │  │  2. Generate (Claude Sonnet 4.5)  │ │
+│  │     → MarkdownCells + ImageCells │  │     → All code files + README     │ │
+│  │     → SocialPost                 │  │                                   │ │
+│  │                                  │  │  3. Review (GPT-4o-mini)          │ │
+│  │  3. Images (fal.ai/HuggingFace)  │  │     → Score 0-100 + issues        │ │
+│  │     → Generate images from specs │  │                                   │ │
+│  │                                  │  │  4. Iteration (if score < 75)     │ │
+│  │  4. Review (GPT-4o-mini)         │  │     → Fixer Agent or full regen   │ │
+│  │     → Score + feedback           │  │     → Max 3 cycles                │ │
+│  │                                  │  │                                   │ │
+│  │  Output: Blog JSON               │  │  5. Publish (Octokit)             │ │
+│  │  - title, cells[], socialPost    │  │     → User's GitHub repo          │ │
+│  │  - _reviewScore, _sections[]     │  │     → Uses encrypted OAuth token  │ │
+│  │                                  │  │                                   │ │
+│  │                                  │  │  Output: Code JSON                │ │
+│  │                                  │  │  - repoUrl, files[], metadata     │ │
+│  └──────────────────────────────────┘  └───────────────────────────────────┘ │
+│                                                                               │
+│  All AI outputs validated with Zod schemas (structured output API)            │
+└───────┬────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       DATA LAYER (Supabase PostgreSQL)                        │
+│                                                                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐  ┌────────────┐  │
+│  │  users   │  │  ideas   │  │ outputs  │  │ credentials │  │ executions │  │
+│  ├──────────┤  ├──────────┤  ├──────────┤  ├─────────────┤  ├────────────┤  │
+│  │ id (PK)  │  │ id (PK)  │  │ id (PK)  │  │ id (PK)     │  │ id (PK)    │  │
+│  │ email    │  │ user_id  │  │ user_id  │  │ user_id     │  │ user_id    │  │
+│  │ name     │  │ title    │  │ idea_id  │  │ provider    │  │ idea_id    │  │
+│  │ ...      │  │ status   │  │ format   │  │ encrypted   │  │ status     │  │
+│  └────┬─────┘  │ ...      │  │ content  │  │ ...         │  │ ...        │  │
+│       │        └────┬─────┘  └──────────┘  └─────────────┘  └────────────┘  │
+│       └─────────────┼───────────────────────────────────────────────────────┤ │
+│                     │           Row-Level Security (RLS) Enabled             │ │
+│                     │           Users only access their own data             │ │
+│                     └─────────────────────────────────────────────────────┤  │
+│                                                                               │
+│  Security:                                                                    │
+│  - GitHub OAuth tokens encrypted with AES-256-GCM                             │
+│  - Per-user data isolation via RLS policies                                   │
+│  - Service role key used by backend only (never exposed)                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════
+                              EXTERNAL SERVICES
+════════════════════════════════════════════════════════════════════════════════
+
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐
+│   OpenAI     │  │  Anthropic   │  │   fal.ai     │  │   GitHub API         │
+│   API        │  │   API        │  │   / HugFace  │  │   (Octokit)          │
+├──────────────┤  ├──────────────┤  ├──────────────┤  ├──────────────────────┤
+│ GPT-4o-mini  │  │ Claude       │  │ FLUX Schnell │  │ Per-user OAuth       │
+│ (planning +  │  │ Sonnet 4.5   │  │ (image gen)  │  │ Repo creation        │
+│  review)     │  │ (generation) │  │              │  │ File uploads         │
+└──────────────┘  └──────────────┘  └──────────────┘  └──────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════
+                                 DATA FLOW
+════════════════════════════════════════════════════════════════════════════════
+
+User Action (Click "Expand")
+    │
+    ├─▶ POST /api/expand { ideaId }
+    │
+    ├─▶ API validates user session (NextAuth)
+    │
+    ├─▶ LangGraph pipeline invoked
+    │       │
+    │       ├─▶ Router Agent decides format
+    │       │
+    │       ├─▶ Creator Agent generates content
+    │       │       │
+    │       │       ├─▶ AI model calls (OpenAI, Anthropic)
+    │       │       ├─▶ Image generation (fal.ai)
+    │       │       └─▶ GitHub publishing (if code)
+    │       │
+    │       └─▶ Returns structured JSON
+    │
+    ├─▶ Save output to Supabase
+    │
+    ├─▶ Update execution record
+    │
+    └─▶ Return outputId to frontend → Redirect to /outputs/[id]
+
+════════════════════════════════════════════════════════════════════════════════
+                              KEY DESIGN PRINCIPLES
+════════════════════════════════════════════════════════════════════════════════
+
+1. Schema-Driven: Zod schemas validate ALL structured data
+2. Per-User Publishing: Each user publishes to THEIR GitHub, not owner's
+3. Quality Gates: Code must score ≥75 before publishing
+4. Cell-Based Blogs: Structured cells, not markdown strings
+5. Fail-Fast: Errors throw immediately, no silent failures
+6. Type-Safe: TypeScript + Zod = runtime type safety
+
+════════════════════════════════════════════════════════════════════════════════
 ```
 
 ---
