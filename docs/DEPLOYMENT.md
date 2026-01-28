@@ -985,4 +985,3 @@ npm run db check-ideas      # Check ideas in test database
 ## See Also
 
 - [Database Setup & Management](./DATABASE.md) - Complete database guide with admin operations
-- [Architecture Overview](./ARCHITECTURE.md) - System design and patterns

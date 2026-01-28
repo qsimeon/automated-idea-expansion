@@ -804,7 +804,6 @@ Complete guides for setup, architecture, and deployment:
   - Monitoring and troubleshooting
 
 
-- **[Architecture Overview](./docs/ARCHITECTURE.md)** - System design
   - High-level architecture
   - Agent pipeline details
   - Model selection strategy

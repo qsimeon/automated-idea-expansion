@@ -1488,4 +1488,3 @@ ORDER BY count DESC;
 ## Next Steps
 
 - **[Deployment Guide](./DEPLOYMENT.md)** - Deploy to production and setup environment variables
-- **[Architecture Overview](./ARCHITECTURE.md)** - Understand system design

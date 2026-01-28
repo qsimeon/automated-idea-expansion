@@ -10,7 +10,6 @@ This document provides the **complete system architecture** and component refere
 - **[README.md](../README.md)** - Getting started and feature overview
 - **[DATABASE.md](./DATABASE.md)** - Database setup and schema
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment guide
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System design patterns
 
 ---
 
@@ -395,6 +394,49 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for security best practices.
 - `npm run dev` - Local development with hot reload
 - `npm run build` - Production build verification
 - `npm run lint` - Code style checking
+
+---
+
+## Model Selection Strategy
+
+Every model choice balances **cost**, **quality**, and **speed**:
+
+| Task | Model | Cost/1M | Speed | Quality | Why? |
+|------|-------|---------|-------|---------|------|
+| Router | GPT-4o-mini | $0.15 | ~500ms | Good | Simple decision, no creativity |
+| Blog Planning | GPT-4o-mini | $0.15 | <500ms | Good | Fast structured reasoning |
+| Blog Generation | Claude Sonnet 4.5 | $3.00 | ~3s | Best | Superior writing quality |
+| Code Planning | GPT-4o-mini | $0.15 | <500ms | Good | Quick architectural decisions |
+| Code Generation | Claude Sonnet 4.5 | $3.00 | ~3s | Best | #1 code quality (LMSYS benchmarks) |
+| Review | GPT-4o-mini | $0.15 | <500ms | Good | Consistent evaluation |
+| Image Gen | FLUX Schnell | $0.001 | ~2s | High | Photorealistic, reliable |
+
+**Why Claude Sonnet 4.5?**
+- LMSYS Chatbot Arena: #1 for code, #2 for writing
+- $3/1M input (vs $15/1M for Opus)
+- Excellent structured output support (Zod schemas)
+- ~$0.015 per generation = cost-effective
+
+**Temperature Settings:**
+- Router: 0.5 (consistent decisions)
+- Planning: 0.7 (fast reasoning)
+- Generation: 0.8 (creative variety)
+- Code: 0.7 (balanced)
+- Review: 0.5 (consistent evaluation)
+
+---
+
+## API Endpoints Reference
+
+| Endpoint | Method | Purpose | Auth Required |
+|----------|--------|---------|---|
+| `/api/expand` | POST | Trigger orchestrator | ✅ |
+| `/api/ideas` | GET, POST | List/create ideas | ✅ |
+| `/api/ideas/[id]` | GET, PUT, DELETE | Manage single idea | ✅ |
+| `/api/outputs` | GET | List outputs | ✅ |
+| `/api/outputs/[id]` | GET, DELETE | Manage single output | ✅ |
+| `/api/usage` | GET | Check credits | ✅ |
+| `/api/auth/...` | - | NextAuth OAuth | - |
 
 ---
 
