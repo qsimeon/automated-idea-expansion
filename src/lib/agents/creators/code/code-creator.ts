@@ -113,7 +113,7 @@ export async function createCodeProject(idea: {
     // STAGE 4: QUALITY GATE & ITERATION LOOP
     const QUALITY_THRESHOLD = 75; // Minimum acceptable score
     const POOR_QUALITY_THRESHOLD = 60; // Below this triggers regeneration
-    const MAX_ITERATIONS = 5; // Hard limit
+    const MAX_ITERATIONS = 3; // Hard limit
 
     while (state.attempts < MAX_ITERATIONS) {
       // Quality gate: Check if code meets threshold

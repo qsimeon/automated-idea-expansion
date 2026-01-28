@@ -21,7 +21,7 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Outputs viewer with format-specific displays
 - ✅ Delete functionality for both ideas and outputs
 
-#### **Phase 4: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
+#### **Phase 3: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
 - ✅ **User Selection** - You choose which idea to expand (no automatic judging)
 - ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
 - ✅ **Creator Agents** - Generates content in **2 formats**:
@@ -41,12 +41,6 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 **Note:** Images and social posts are **components** of blogs, not standalone formats.
 
 ### 🎉 Production-Ready Features:
-
-#### **Per-User GitHub Publishing (Jan 2026) - SECURITY FIX**
-- ✅ **Each user publishes to their own GitHub account** (not site owner's!)
-- ✅ User's OAuth token encrypted with AES-256-GCM
-- ✅ Automatic credential retrieval and decryption
-- ✅ Graceful fallback to dry-run if user hasn't authenticated
 
 #### **Database Reset for Production (Jan 2026)**
 - ✅ **One-command database reset** to clean production state
@@ -76,14 +70,14 @@ An AI-powered agent orchestration system that transforms raw ideas into polished
 - ✅ Planning agent now uses structured outputs (eliminated 70+ lines of parsing)
 - ✅ Critic agent uses structured outputs (eliminated 127 lines of parsing)
 - ✅ CLI/Demo generators use structured outputs
-- ✅ Notebook generator V2 uses structured outputs
+- ✅ Notebook generator uses structured outputs
 - ✅ Zero JSON parsing errors - guaranteed valid output
 - ✅ ~340 lines of complex parsing code removed
 
 #### **Quality Iteration Loops (Jan 2026)**
 - ✅ Added fixer agent for targeted file regeneration
 - ✅ Implemented quality gates (score ≥ 75)
-- ✅ Up to 5 iteration cycles
+- ✅ Up to 3 iteration cycles
 - ✅ Smart decisions (regenerate all vs fix specific files)
 - ✅ Score tracking and decline detection
 
@@ -402,7 +396,7 @@ User Selects Idea to Expand (Click "Expand" button)
       ↓
   ┌─────────────┼─────────────┐
   │             │             │
-Blog Creator V3            Code Creator V2
+Blog Creator              Code Creator
   │                             │
   │                         Planning Agent
   │                         (GPT-4o-mini)
@@ -430,7 +424,7 @@ Blog Creator V3            Code Creator V2
               User Views Output
 ```
 
-### 5-Stage Code Creator V2 (Advanced)
+### 5-Stage Code Creator (Advanced)
 
 The code creator uses a sophisticated multi-stage approach with quality iteration loops:
 
@@ -626,7 +620,7 @@ Extremely cost-effective thanks to:
 ```bash
 # Terminal output when expanding "Build a sentiment analysis CLI tool"
 
-🚀 === MULTI-STAGE CODE CREATOR V2 ===
+🚀 === MULTI-STAGE CODE CREATOR ===
    Idea: "Build a sentiment analysis CLI tool"
 
 📋 STAGE 1: Planning
