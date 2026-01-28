@@ -70,16 +70,9 @@ export const authOptions: NextAuthOptions = {
      * Add custom fields to the token (like userId from database)
      */
     async jwt({ token, account, profile }) {
-      console.log('🔐 JWT callback triggered', {
-        hasAccount: !!account,
-        hasProfile: !!profile,
-        email: token.email
-      });
-
       // CRITICAL: Ensure we always have a userId on token
       // This is used by RLS policies to isolate user data
       if (!token.userId) {
-        console.log('📋 First time sign-in detected, creating/getting user...');
 
         // Get or create user in database
         const { data: existingUser, error: selectError } = await supabaseAdmin
@@ -99,10 +92,8 @@ export const authOptions: NextAuthOptions = {
         if (existingUser) {
           // User already exists
           userId = existingUser.id;
-          console.log('✅ JWT callback: User already exists', { userId, email: token.email });
         } else {
           // Create new user (this is required)
-          console.log('📝 Creating new user:', token.email);
 
           const { data: newUser, error: createError } = await supabaseAdmin
             .from('users')
@@ -124,7 +115,6 @@ export const authOptions: NextAuthOptions = {
           }
 
           userId = newUser.id;
-          console.log('✅ JWT callback: New user created', { userId, email: token.email });
 
           // IMPORTANT: Trigger should auto-create usage_tracking, but verify it exists
           const { data: usage, error: usageCheckError } = await supabaseAdmin
@@ -148,13 +138,11 @@ export const authOptions: NextAuthOptions = {
               throw new Error(`Failed to create usage tracking: ${manualUsageError.message}`);
             }
           }
-          console.log('✅ JWT callback: Usage tracking ensured', { userId });
         }
 
         // Store GitHub token (encrypted)
         if (account?.access_token) {
           try {
-            console.log('🔒 Encrypting and storing GitHub token...');
             const encryptedToken = encryptToJSON(account.access_token);
 
             const { error: credError } = await supabaseAdmin
@@ -176,7 +164,6 @@ export const authOptions: NextAuthOptions = {
               console.error('❌ JWT callback: Failed to store GitHub token:', credError);
               throw new Error(`Failed to store credentials: ${credError.message}`);
             }
-            console.log('✅ JWT callback: GitHub token stored (encrypted)');
           } catch (err) {
             console.error('❌ JWT callback error during token storage:', err);
             throw err;
@@ -197,11 +184,6 @@ export const authOptions: NextAuthOptions = {
 
         token.userId = userId;
         token.sub = userId;
-        console.log('✅ JWT callback: Token configured with userId', {
-          userId,
-          email: token.email,
-          dbVersion: token.dbVersion,
-        });
       } else {
         // User ID exists in token - verify database hasn't been reset
         // via the database_version epoch system
@@ -228,10 +210,6 @@ export const authOptions: NextAuthOptions = {
 
           // Token is still valid, keep the database version in token
           token.dbVersion = dbVersion;
-          console.log('✅ JWT callback: Token verified with current database version', {
-            userId: token.userId,
-            dbVersion,
-          });
         } catch (error) {
           console.error('❌ JWT callback: Error checking database version:', error);
           // Fail open - allow token to continue (database might be in setup)
