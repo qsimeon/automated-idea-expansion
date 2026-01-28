@@ -1,8 +1,11 @@
-# System Architecture - Automated Idea Expansion
+# Architecture - Deep Dive
 
-**Version:** V3 (Cell-Based Architecture)
-**Last Updated:** January 22, 2026
-**Status:** Production-ready localhost app
+> **Last Updated:** January 22, 2026
+> **Status:** Production-ready
+
+> **Use this document for:** Design philosophy, architectural decisions, and detailed pattern analysis
+>
+> **For complete system overview with diagrams, see:** [SYSTEM_OVERVIEW.md](./SYSTEM_OVERVIEW.md)
 
 ---
 

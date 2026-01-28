@@ -4,12 +4,17 @@
 > **Architecture:** LangGraph Multi-Agent Pipeline
 > **Status:** Production Ready ✅
 
+> **Use this document for:** Complete architecture diagrams, component reference, execution flows, and technology stack
+>
+> **For deeper analysis of design decisions, see:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+
 ## Quick Navigation
 
 This document provides the **complete system architecture** and component reference. See also:
 - **[README.md](../README.md)** - Getting started and feature overview
 - **[DATABASE.md](./DATABASE.md)** - Database setup and schema
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment guide
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Design philosophy and detailed patterns
 
 ---
 

@@ -784,12 +784,17 @@ The Router Agent will automatically choose the best format (blog or code) for ea
 
 Complete guides for setup, architecture, and deployment:
 
-- **[System Overview](./docs/SYSTEM_OVERVIEW.md)** - Complete system architecture
-  - Component breakdown
-  - Execution flows for each content type
-  - File structure and navigation
-  - Technology stack
-  - Data flow diagrams
+- **[System Overview](./docs/SYSTEM_OVERVIEW.md)** - Primary architecture reference
+  - Complete system diagrams (all layers)
+  - Component breakdown with file references
+  - Execution flows for blog and code creation
+  - Technology stack and API endpoints
+
+- **[Architecture - Deep Dive](./docs/ARCHITECTURE.md)** - Design decisions & patterns
+  - Design philosophy and key decisions
+  - Why we chose specific technologies
+  - Detailed pattern analysis
+  - Performance and security architecture
 
 - **[Database Setup & Management](./docs/DATABASE.md)** - Complete database guide
   - Initial setup from scratch
