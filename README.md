@@ -368,7 +368,7 @@ Example of a successful blog expansion:
    REPLICATE_API_TOKEN=r8_...             # https://replicate.com/account
    ```
 
-   See `docs/ENVIRONMENT_VARIABLES.md` for detailed explanations.
+   See `docs/DATABASE.md` under "Initial Setup" for environment variable details.
 
 6. **Run development server:**
    ```bash
@@ -800,19 +800,6 @@ Complete guides for setup, deployment, and administration:
   - Post-deployment testing
   - Monitoring and troubleshooting
 
-- **[Admin Tools](./docs/ADMIN_TOOLS.md)** - Manage users and credits
-  - Seed admin user
-  - Check user usage
-  - Grant credits manually
-  - Database debugging
-  - User management
-  - Analytics and monitoring
-
-- **[Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)** - Configuration reference
-  - All environment variables explained
-  - How to generate secrets
-  - Per-environment setup
-  - Troubleshooting guide
 
 - **[Architecture Overview](./docs/ARCHITECTURE.md)** - System design
   - High-level architecture

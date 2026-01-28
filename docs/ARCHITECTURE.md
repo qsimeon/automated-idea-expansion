@@ -1438,10 +1438,8 @@ Phase 2.4: Vercel Production Deployment
 
 ## See Also
 
-- **[DATABASE.md](./DATABASE.md)** - Complete database setup and management guide
+- **[DATABASE.md](./DATABASE.md)** - Complete database setup, management, and admin operations
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment to Vercel
-- **[ADMIN_TOOLS.md](./ADMIN_TOOLS.md)** - Admin tools and user management
-- **[ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md)** - Environment configuration reference
 - **[README.md](../README.md)** - Project overview and getting started guide
 
 For questions or contributions, see [README.md](./README.md)

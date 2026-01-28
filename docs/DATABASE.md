@@ -1105,13 +1105,13 @@ ORDER BY pr.verified_at DESC;
 
 **Checklist:**
 ```bash
-# 1. Delete all test data (keep schema)
-npm run db:reset-data
-# (Run scripts/reset-db-delete-data.sql in SQL Editor)
+# 1. Complete reset: delete everything and recreate schema
+npm run db:reset-complete
+# (Run scripts/reset-db.sql then scripts/setup-db.sql in SQL Editor)
 
 # 2. Seed admin user with 100 credits
 npm run db:seed-admin
-# (Or run scripts/seed-admin-user.sql in SQL Editor)
+# (Or run scripts/seed-admin.sql in SQL Editor)
 
 # 3. Verify
 SELECT COUNT(*) FROM users;              -- Should be: 1
@@ -1477,10 +1477,8 @@ ORDER BY count DESC;
 | Purpose | File |
 |---------|------|
 | Initial setup | scripts/setup-db.sql |
-| Add credit system | scripts/migrations/002-add-usage-tracking-simple.sql |
-| Delete all data | scripts/reset-db-delete-data.sql |
-| Complete reset | scripts/complete-db-reset.sql |
-| Seed admin user (SQL) | scripts/seed-admin-user.sql |
+| Delete all data | scripts/reset-db.sql |
+| Seed admin user (SQL) | scripts/seed-admin.sql |
 | Seed admin user (TS) | scripts/admin/seed-admin-user.ts |
 | Grant credits | scripts/admin/grant-credits.ts |
 | Development tools | scripts/db-helper.ts |
@@ -1489,7 +1487,5 @@ ORDER BY count DESC;
 
 ## Next Steps
 
-- **[Deployment Guide](./DEPLOYMENT.md)** - Deploy to production
-- **[Admin Tools](./ADMIN_TOOLS.md)** - Manage users and credits
+- **[Deployment Guide](./DEPLOYMENT.md)** - Deploy to production and setup environment variables
 - **[Architecture Overview](./ARCHITECTURE.md)** - Understand system design
-- **[Environment Variables](./ENVIRONMENT_VARIABLES.md)** - Configure credentials

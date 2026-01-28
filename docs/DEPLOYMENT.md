@@ -316,13 +316,15 @@ Before first deployment, prepare database:
 
 ### Step 1: Reset Database
 
-In Supabase SQL Editor, run:
+In Supabase SQL Editor, run both in sequence:
 ```bash
-scripts/reset-db-delete-data.sql
+scripts/reset-db.sql
+scripts/setup-db.sql
 ```
 
 This:
 - Deletes all test data
+- Recreates the complete database schema
 - Keeps database schema
 - Resets admin user (qsimeon@mit.edu) with 100 credits
 
@@ -982,7 +984,5 @@ npm run db check-ideas      # Check ideas in test database
 
 ## See Also
 
-- [Database Setup & Management](./DATABASE.md) - Complete database guide
-- [Admin Tools](./ADMIN_TOOLS.md) - Managing users and credits
-- [Environment Variables](./ENVIRONMENT_VARIABLES.md) - Detailed env var reference
+- [Database Setup & Management](./DATABASE.md) - Complete database guide with admin operations
 - [Architecture Overview](./ARCHITECTURE.md) - System design and patterns

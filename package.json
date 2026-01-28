@@ -8,10 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "db": "tsx scripts/db-helper.ts",
-    "db:setup-fresh": "echo 'Run scripts/setup-db-complete.sql in Supabase SQL Editor: https://app.supabase.com'",
+    "db:setup-fresh": "echo 'Run scripts/setup-db.sql in Supabase SQL Editor: https://app.supabase.com'",
+    "db:reset-complete": "echo 'Run scripts/reset-db.sql then scripts/setup-db.sql in Supabase SQL Editor'",
     "db:seed-admin": "tsx scripts/admin/seed-admin-user.ts",
-    "db:reset-data": "echo 'Run scripts/reset-db-delete-data.sql in Supabase SQL Editor'",
-    "db:complete-reset": "echo 'Run scripts/complete-db-reset.sql in Supabase SQL Editor to delete everything'",
     "admin:grant-credits": "tsx scripts/admin/grant-credits.ts"
   },
   "dependencies": {
