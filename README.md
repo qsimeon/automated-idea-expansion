@@ -2,85 +2,6 @@
 
 An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts (with images + social share tweet) or complete code projects.
 
-## 🎯 Current Status
-
-**Production Ready!** ✅ Ready for Vercel Deployment
-
-### ✅ What's Working:
-
-#### **Phase 1: Foundation**
-- ✅ Next.js 15 with TypeScript
-- ✅ Supabase PostgreSQL database with Row-Level Security
-- ✅ Complete database schema
-- ✅ Environment configuration (.env.local)
-
-#### **Phase 2: Ideas & Outputs Management**
-- ✅ Simple one-field form to capture raw ideas
-- ✅ Ideas CRUD API (`GET`, `POST`, `PUT`, `DELETE`)
-- ✅ Ideas list page with pending/expanded organization
-- ✅ Outputs viewer with format-specific displays
-- ✅ Delete functionality for both ideas and outputs
-
-#### **Phase 3: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
-- ✅ **User Selection** - You choose which idea to expand (no automatic judging)
-- ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
-- ✅ **Creator Agents** - Generates content in **2 formats**:
-  - 📝 **Blog Posts** - 4-stage cell-based pipeline with images + social share:
-    - Planning (GPT-4o-mini) → sections, tone, image specs
-    - Generation (Claude Sonnet 4.5) → cell-based content (MarkdownCell + ImageCell) + 1-3 images
-    - Social Share (integrated) → auto-generated tweet (280 chars max, 2-3 hashtags)
-    - Review (GPT-4o-mini) → quality scoring
-    - **Architecture:** Atomic content blocks, no markdown string manipulation
-  - 💻 **Code Projects** - 5-stage pipeline with iteration:
-    - Planning (GPT-4o-mini) → quality rubrics, implementation steps
-    - Generation (Claude Sonnet 4.5) → all files with structured outputs
-    - Review (GPT-4o-mini) → actionable feedback
-    - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
-    - Up to 3 cycles until score ≥75
-
-**Note:** Images and social posts are **components** of blogs, not standalone formats.
-
-### 🎉 Production-Ready Features:
-
-#### **Database Reset for Production (Jan 2026)**
-- ✅ **One-command database reset** to clean production state
-- ✅ Preserves schema and RLS policies
-- ✅ Documented with step-by-step guide
-- ✅ Verified and tested for Vercel deployment
-
-#### **Cell-Based Architecture & Model Optimization (Jan 2026)**
-- ✅ **Cell-Based Blog Architecture** - Atomic content blocks:
-  - MarkdownCell + ImageCell discriminated unions
-  - No markdown string manipulation (schemas all the way down)
-  - Type-safe at every layer with Zod validation
-- ✅ **Images as Components** - Removed 'image' as standalone format:
-  - Images generated as first-class cells within blog content
-  - Context-aware generation (images understand blog content)
-  - Up to 3 images per blog with captions and alt text
-- ✅ **Optimized Model Selection**:
-  - GPT-4o-mini for planning (fast, cost-effective, low cost)
-  - Claude Sonnet 4.5 for blog generation (handles complex nested schemas)
-  - GPT-4o-mini for review/routing/judging
-  - Direct model instantiation (removed model-factory abstraction)
-- ✅ **Social Share Integration** - Auto-generated tweets embedded in blog generation
-- ✅ **GitHub Repo Links** - Added "View on GitHub" buttons to code output cards
-
-#### **Structured Outputs Migration (Jan 2026)**
-- ✅ Implemented Zod schemas across entire pipeline
-- ✅ Planning agent now uses structured outputs (eliminated 70+ lines of parsing)
-- ✅ Critic agent uses structured outputs (eliminated 127 lines of parsing)
-- ✅ CLI/Demo generators use structured outputs
-- ✅ Notebook generator uses structured outputs
-- ✅ Zero JSON parsing errors - guaranteed valid output
-- ✅ ~340 lines of complex parsing code removed
-
-#### **Quality Iteration Loops (Jan 2026)**
-- ✅ Added fixer agent for targeted file regeneration
-- ✅ Implemented quality gates (score ≥ 75)
-- ✅ Up to 3 iteration cycles
-- ✅ Smart decisions (regenerate all vs fix specific files)
-- ✅ Score tracking and decline detection
-
 ---
 
 ## 🏗️ System Architecture
@@ -611,7 +532,7 @@ Extremely cost-effective thanks to:
 | **fal.ai / HuggingFace** | **AI image generation** | ✅ |
 | **Octokit** | **GitHub API for repo creation** | ✅ |
 | E2B | Code sandboxing | ⏳ Future |
-| Vercel | Hosting & cron jobs | ⏳ Ready |
+| Vercel | Hosting & cron jobs | ⏳ Future |
 
 ---
 
@@ -798,6 +719,164 @@ Complete guides for setup, architecture, and deployment:
   - GitHub OAuth configuration
   - Production deployment checklist
   - Monitoring and troubleshooting
+
+---
+
+
+## 🎯 Current Status
+
+### ✅ What's Working:
+
+#### **Phase 1: Foundation**
+- ✅ Next.js 15 with TypeScript
+- ✅ Supabase PostgreSQL database with Row-Level Security
+- ✅ Complete database schema
+## 🎯 Current Status
+
+**Production Ready!** ✅ Ready for Vercel Deployment
+
+### ✅ What's Working:
+
+#### **Phase 1: Foundation**
+- ✅ Next.js 15 with TypeScript
+- ✅ Supabase PostgreSQL database with Row-Level Security
+- ✅ Complete database schema
+- ✅ Environment configuration (.env.local)
+
+#### **Phase 2: Ideas & Outputs Management**
+- ✅ Simple one-field form to capture raw ideas
+- ✅ Ideas CRUD API (`GET`, `POST`, `PUT`, `DELETE`)
+- ✅ Ideas list page with pending/expanded organization
+- ✅ Outputs viewer with format-specific displays
+- ✅ Delete functionality for both ideas and outputs
+
+#### **Phase 3: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
+- ✅ **User Selection** - You choose which idea to expand (no automatic judging)
+- ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
+- ✅ **Creator Agents** - Generates content in **2 formats**:
+  - 📝 **Blog Posts** - 4-stage cell-based pipeline with images + social share:
+    - Planning (GPT-4o-mini) → sections, tone, image specs
+    - Generation (Claude Sonnet 4.5) → cell-based content (MarkdownCell + ImageCell) + 1-3 images
+    - Social Share (integrated) → auto-generated tweet (280 chars max, 2-3 hashtags)
+    - Review (GPT-4o-mini) → quality scoring
+    - **Architecture:** Atomic content blocks, no markdown string manipulation
+  - 💻 **Code Projects** - 5-stage pipeline with iteration:
+    - Planning (GPT-4o-mini) → quality rubrics, implementation steps
+    - Generation (Claude Sonnet 4.5) → all files with structured outputs
+    - Review (GPT-4o-mini) → actionable feedback
+    - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
+    - Up to 3 cycles until score ≥75
+
+**Note:** Images and social posts are **components** of blogs, not standalone formats.
+
+### 🎉 Production-Ready Features:
+
+#### **Database Reset for Production (Jan 2026)**
+- ✅ **One-command database reset** to clean production state
+- ✅ Preserves schema and RLS policies
+- ✅ Documented with step-by-step guide
+- ✅ Verified and tested for Vercel deployment
+
+#### **Cell-Based Architecture & Model Optimization (Jan 2026)**
+- ✅ **Cell-Based Blog Architecture** - Atomic content blocks:
+  - MarkdownCell + ImageCell discriminated unions
+  - No markdown string manipulation (schemas all the way down)
+  - Type-safe at every layer with Zod validation
+- ✅ **Images as Components** - Removed 'image' as standalone format:
+  - Images generated as first-class cells within blog content
+  - Context-aware generation (images understand blog content)
+  - Up to 3 images per blog with captions and alt text
+- ✅ **Optimized Model Selection**:
+  - GPT-4o-mini for planning (fast, cost-effective, low cost)
+  - Claude Sonnet 4.5 for blog generation (handles complex nested schemas)
+  - GPT-4o-mini for review/routing/judging
+  - Direct model instantiation (removed model-factory abstraction)
+- ✅ **Social Share Integration** - Auto-generated tweets embedded in blog generation
+- ✅ **GitHub Repo Links** - Added "View on GitHub" buttons to code output cards
+
+#### **Structured Outputs Migration (Jan 2026)**
+- ✅ Implemented Zod schemas across entire pipeline
+- ✅ Planning agent now uses structured outputs (eliminated 70+ lines of parsing)
+- ✅ Critic agent uses structured outputs (eliminated 127 lines of parsing)
+- ✅ CLI/Demo generators use structured outputs
+- ✅ Notebook generator uses structured outputs
+- ✅ Zero JSON parsing errors - guaranteed valid output
+- ✅ ~340 lines of complex parsing code removed
+
+#### **Quality Iteration Loops (Jan 2026)**
+- ✅ Added fixer agent for targeted file regeneration
+- ✅ Implemented quality gates (score ≥ 75)
+- ✅ Up to 3 iteration cycles
+- ✅ Smart decisions (regenerate all vs fix specific files)
+- ✅ Score tracking and decline detection
+- ✅ Environment configuration (.env.local)
+
+#### **Phase 2: Ideas & Outputs Management**
+- ✅ Simple one-field form to capture raw ideas
+- ✅ Ideas CRUD API (`GET`, `POST`, `PUT`, `DELETE`)
+- ✅ Ideas list page with pending/expanded organization
+- ✅ Outputs viewer with format-specific displays
+- ✅ Delete functionality for both ideas and outputs
+
+#### **Phase 3: Multi-Agent Pipeline (LangGraph) - CURRENT ARCHITECTURE**
+- ✅ **User Selection** - You choose which idea to expand (no automatic judging)
+- ✅ **Router Agent** - Decides optimal output format: blog or code (GPT-4o-mini)
+- ✅ **Creator Agents** - Generates content in **2 formats**:
+  - 📝 **Blog Posts** - 4-stage cell-based pipeline with images + social share:
+    - Planning (GPT-4o-mini) → sections, tone, image specs
+    - Generation (Claude Sonnet 4.5) → cell-based content (MarkdownCell + ImageCell) + 1-3 images
+    - Social Share (integrated) → auto-generated tweet (280 chars max, 2-3 hashtags)
+    - Review (GPT-4o-mini) → quality scoring
+    - **Architecture:** Atomic content blocks, no markdown string manipulation
+  - 💻 **Code Projects** - 5-stage pipeline with iteration:
+    - Planning (GPT-4o-mini) → quality rubrics, implementation steps
+    - Generation (Claude Sonnet 4.5) → all files with structured outputs
+    - Review (GPT-4o-mini) → actionable feedback
+    - **Iteration Loop** → Targeted fixes (Fixer Agent) or full regeneration
+    - Up to 3 cycles until score ≥75
+
+**Note:** Images and social posts are **components** of blogs, not standalone formats.
+
+### 🎉 Production-Ready Features:
+
+#### **Database Reset for Production (Jan 2026)**
+- ✅ **One-command database reset** to clean production state
+- ✅ Preserves schema and RLS policies
+- ✅ Documented with step-by-step guide
+- ✅ Verified and tested for Vercel deployment
+
+#### **Cell-Based Architecture & Model Optimization (Jan 2026)**
+- ✅ **Cell-Based Blog Architecture** - Atomic content blocks:
+  - MarkdownCell + ImageCell discriminated unions
+  - No markdown string manipulation (schemas all the way down)
+  - Type-safe at every layer with Zod validation
+- ✅ **Images as Components** - Removed 'image' as standalone format:
+  - Images generated as first-class cells within blog content
+  - Context-aware generation (images understand blog content)
+  - Up to 3 images per blog with captions and alt text
+- ✅ **Optimized Model Selection**:
+  - GPT-4o-mini for planning (fast, cost-effective, low cost)
+  - Claude Sonnet 4.5 for blog generation (handles complex nested schemas)
+  - GPT-4o-mini for review/routing/judging
+  - Direct model instantiation (removed model-factory abstraction)
+- ✅ **Social Share Integration** - Auto-generated tweets embedded in blog generation
+- ✅ **GitHub Repo Links** - Added "View on GitHub" buttons to code output cards
+
+#### **Structured Outputs Migration (Jan 2026)**
+- ✅ Implemented Zod schemas across entire pipeline
+- ✅ Planning agent now uses structured outputs (eliminated 70+ lines of parsing)
+- ✅ Critic agent uses structured outputs (eliminated 127 lines of parsing)
+- ✅ CLI/Demo generators use structured outputs
+- ✅ Notebook generator uses structured outputs
+- ✅ Zero JSON parsing errors - guaranteed valid output
+- ✅ ~340 lines of complex parsing code removed
+
+#### **Quality Iteration Loops (Jan 2026)**
+- ✅ Added fixer agent for targeted file regeneration
+- ✅ Implemented quality gates (score ≥ 75)
+- ✅ Up to 3 iteration cycles
+- ✅ Smart decisions (regenerate all vs fix specific files)
+- ✅ Score tracking and decline detection
 
 ---
 
