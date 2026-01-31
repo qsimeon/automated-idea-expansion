@@ -4,6 +4,11 @@ import type { CodePlan, GeneratedCode, CodeFile } from './types';
 import { generateNotebook } from './notebook-generator'; // Atomic schemas
 import { ReadmeSchema, type Readme } from './readme-schema';
 import { renderReadmeToMarkdown } from './readme-renderer';
+import {
+  extractModuleSignatures,
+  formatModuleContextForPrompt,
+  type ModuleContext,
+} from './module-context-extractor';
 import { z } from 'zod';
 
 /**
@@ -48,8 +53,17 @@ const DemoScriptSchema = z.object({
   requiredPackages: z.array(z.string()).describe('Required packages/dependencies').optional(),
 }).passthrough();
 
+// Schema for generating multiple code files (modules)
+const MultipleFilesSchema = z.object({
+  files: z.array(z.object({
+    path: z.string().describe('File path (e.g., "utils.py", "api.js")'),
+    content: z.string().describe('Complete, working code for this file'),
+  })).describe('List of code files to create'),
+});
+
 type CLIAppOutput = z.infer<typeof CLIAppSchema>;
 type DemoScriptOutput = z.infer<typeof DemoScriptSchema>;
+type MultipleFilesOutput = z.infer<typeof MultipleFilesSchema>;
 
 /**
  * VALIDATE FILE COUNT - Ensure generated files match architectural requirements
@@ -162,11 +176,91 @@ export async function generateCode(
 
 
 /**
+ * GENERATE LIBRARY MODULES FOR MODULAR ARCHITECTURE
+ *
+ * When architecture is 'modular', generate library modules that the main file imports from.
+ * This enables clean separation of concerns.
+ *
+ * @param idea - The project idea
+ * @param plan - The code plan
+ * @param language - Programming language
+ * @returns Array of CodeFile objects for modules, plus ModuleContext for imports
+ */
+async function generateLibraryModules(
+  idea: { title: string; description: string | null },
+  plan: CodePlan,
+  language: string
+): Promise<{ files: CodeFile[]; moduleContext: ModuleContext[] }> {
+  const model = new ChatAnthropic({
+    modelName: 'claude-sonnet-4-5-20250929',
+    temperature: 0.3,
+  });
+
+  const structuredModel = model.withStructuredOutput(MultipleFilesSchema);
+
+  // Suggest 2-3 utility modules based on the idea
+  const fileExtension = language === 'python' ? '.py' : '.js';
+  const libFiles = [
+    `lib/core${fileExtension}`,
+    `lib/utils${fileExtension}`,
+  ];
+
+  const prompt = `Generate library modules for a ${language} project.
+
+PROJECT: "${idea.title}"
+${idea.description ? `DESCRIPTION: ${idea.description}` : ''}
+
+REQUIRED FILES:
+${libFiles.map((f, i) => `${i + 1}. ${f}`).join('\n')}
+
+These are library modules that will be IMPORTED by main application code.
+Generate them to be reusable and well-structured.
+
+REQUIREMENTS:
+- Each file must be a complete, working ${language} module
+- Include proper module docstrings
+- Public functions/classes with docstrings
+- Can include helper functions (prefix with _)
+- Design for IMPORT and USE, not standalone execution
+- Proper imports at the top
+- Type hints where applicable (Python) or JSDoc (JavaScript)
+
+RESPONSE FORMAT:
+{
+  "files": [
+    {
+      "path": "${libFiles[0]}",
+      "content": "# Complete module code..."
+    },
+    {
+      "path": "${libFiles[1]}",
+      "content": "# Complete module code..."
+    }
+  ]
+}`;
+
+  const result = await structuredModel.invoke(prompt);
+
+  const codeFiles: CodeFile[] = result.files.map((f: any) => ({
+    path: f.path,
+    content: f.content,
+    language,
+  }));
+
+  // Extract signatures
+  const moduleContext = await extractModuleSignatures(codeFiles, language);
+
+  console.log(`   ✅ Generated ${codeFiles.length} library module(s) for modular architecture`);
+
+  return { files: codeFiles, moduleContext };
+}
+
+/**
  * CLI APP GENERATOR
  *
  * Creates a command-line application with:
  * - Main executable file
- * - Argument parsing
+ * - Argument parsing (for modular: imports from library)
  * - Help text
  * - README with usage examples
  */
@@ -174,7 +268,18 @@ async function generateCLIApp(
   plan: CodePlan,
   idea: { title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  // Automatically select model based on complexity tier
+  // PHASE 1: For modular architecture, generate library modules first
+  let moduleFiles: CodeFile[] = [];
+  let moduleContext: ModuleContext[] = [];
+
+  if (plan.architecture === 'modular') {
+    console.log(`   📁 PHASE 1: Generating library modules for modular CLI...`);
+    const result = await generateLibraryModules(idea, plan, plan.language);
+    moduleFiles = result.files;
+    moduleContext = result.moduleContext;
+  }
+
+  // PHASE 2: Generate main CLI file WITH module context
   const model = selectGenerationModel(plan);
 
   // Use structured output (guarantees valid JSON)
@@ -182,9 +287,14 @@ async function generateCLIApp(
 
   const mainFile = plan.language === 'python' ? 'main.py' : plan.language === 'typescript' ? 'index.ts' : 'index.js';
 
+  // Format module context for prompt
+  const moduleContextSection = formatModuleContextForPrompt(moduleContext, 'cli-app');
+
   const prompt = `Create a WORKING, EXECUTABLE CLI application that implements: ${idea.title}
 
 Description: ${idea.description || 'No additional description'}
+
+${moduleContextSection}
 
 Requirements:
 - Language: ${plan.language}
@@ -233,6 +343,7 @@ OUTPUT STRUCTURE:
 
     // First create the code files (without README)
     const codeFiles: CodeFile[] = [
+      ...moduleFiles, // Include library modules if generated
       {
         path: mainFile,
         content: result.code,
@@ -347,20 +458,37 @@ async function generateLibrary(
 /**
  * DEMO SCRIPT GENERATOR
  *
- * Creates a simple, standalone script demonstrating the idea
+ * Creates a simple, standalone script demonstrating the idea.
+ * For modular architecture, generates supporting modules.
  */
 async function generateDemoScript(
   plan: CodePlan,
   idea: { title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  // Automatically select model based on complexity tier
+  // PHASE 1: For modular architecture, generate library modules first
+  let moduleFiles: CodeFile[] = [];
+  let moduleContext: ModuleContext[] = [];
+
+  if (plan.architecture === 'modular') {
+    console.log(`   📁 PHASE 1: Generating library modules for modular demo...`);
+    const result = await generateLibraryModules(idea, plan, plan.language);
+    moduleFiles = result.files;
+    moduleContext = result.moduleContext;
+  }
+
+  // PHASE 2: Generate demo script WITH module context
   const model = selectGenerationModel(plan);
 
   const fileName = plan.language === 'python' ? 'demo.py' : 'demo.js';
 
+  // Format module context for prompt
+  const moduleContextSection = formatModuleContextForPrompt(moduleContext, 'demo-script');
+
   const prompt = `Create a WORKING demo script that implements: ${idea.title}
 
 Description: ${idea.description || 'No additional description'}
+
+${moduleContextSection}
 
 Requirements:
 - Language: ${plan.language}
@@ -402,6 +530,7 @@ OUTPUT STRUCTURE:
 
     // First create the code files (without README)
     const codeFiles: CodeFile[] = [
+      ...moduleFiles, // Include library modules if generated
       {
         path: fileName,
         content: result.code,

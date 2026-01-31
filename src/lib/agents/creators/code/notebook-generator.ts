@@ -4,6 +4,11 @@ import type { CodePlan, GeneratedCode, CodeFile } from './types';
 import { z } from 'zod';
 import { ReadmeSchema, type Readme } from './readme-schema';
 import { renderReadmeToMarkdown } from './readme-renderer';
+import {
+  extractModuleSignatures,
+  formatModuleContextForPrompt,
+  type ModuleContext,
+} from './module-context-extractor';
 
 // Schema for generating multiple Python files
 const ModuleFileSchema = z.object({
@@ -143,13 +148,40 @@ export async function generateNotebook(
 ): Promise<{ code: GeneratedCode }> {
   console.log('📓 Generating notebook with atomic schemas...');
 
+  // PHASE 1: Generate critical modules FIRST (if any)
+  let moduleContext: ModuleContext[] = [];
+  let generatedModuleFiles: CodeFile[] = [];
+
+  if (plan.criticalFiles && plan.criticalFiles.length > 0) {
+    const pythonModuleFiles = plan.criticalFiles.filter(f =>
+      f.endsWith('.py') && !f.endsWith('.ipynb')
+    );
+
+    if (pythonModuleFiles.length > 0) {
+      console.log(`   📁 PHASE 1: Generating ${pythonModuleFiles.length} critical Python module(s) first...`);
+      generatedModuleFiles = await generateCriticalModules(
+        idea,
+        plan,
+        pythonModuleFiles
+      );
+
+      // Extract signatures from generated modules
+      console.log(`   🔍 Extracting module signatures...`);
+      moduleContext = await extractModuleSignatures(generatedModuleFiles, 'python');
+      console.log(`   ✅ Extracted signatures: ${moduleContext.map(m => m.exports.length).reduce((a, b) => a + b, 0)} total exports`);
+    }
+  }
+
+  // PHASE 2: Generate notebook WITH module context
+  console.log(`   📝 PHASE 2: Generating notebook with module context...`);
+
   // Use model selection based on complexity
   const model = selectGenerationModel(plan);
 
   // Use structured output with atomic schema
   const structuredModel = model.withStructuredOutput(NotebookGenerationSchema);
 
-  const prompt = buildAtomicNotebookPrompt(idea, plan);
+  const prompt = buildAtomicNotebookPrompt(idea, plan, moduleContext);
 
   // Retry logic: Try up to 3 times
   const maxRetries = 3;
@@ -202,23 +234,10 @@ export async function generateNotebook(
         });
       }
 
-      // Generate critical Python module files from the plan
-      if (plan.criticalFiles && plan.criticalFiles.length > 0) {
-        const pythonModuleFiles = plan.criticalFiles.filter(f =>
-          f.endsWith('.py') && !f.endsWith('.ipynb')
-        );
-
-        if (pythonModuleFiles.length > 0) {
-          console.log(`   📁 Generating ${pythonModuleFiles.length} critical Python module(s)...`);
-          const generatedModules = await generateCriticalModules(
-            idea,
-            plan,
-            pythonModuleFiles,
-            result.requiredPackages,
-            result.cells
-          );
-          files.push(...generatedModules);
-        }
+      // Add module files (generated in PHASE 1)
+      if (generatedModuleFiles.length > 0) {
+        console.log(`   ✅ Adding ${generatedModuleFiles.length} module file(s) to output...`);
+        files.push(...generatedModuleFiles);
       }
 
       return {
@@ -256,14 +275,21 @@ export async function generateNotebook(
  * Build the prompt for atomic notebook generation
  *
  * This prompt guides the LLM to think in atomic, structured units
+ * and instructs it to use available modules instead of duplicating code
  */
 function buildAtomicNotebookPrompt(
   idea: { title: string; description: string | null },
-  plan: CodePlan
+  plan: CodePlan,
+  moduleContext: ModuleContext[] = []
 ): string {
+  // Format module context for injection into prompt
+  const moduleContextSection = formatModuleContextForPrompt(moduleContext, 'notebook');
+
   return `Create a working Jupyter notebook for: "${idea.title}"
 
 ${idea.description ? `Description: ${idea.description}` : ''}
+
+${moduleContextSection}
 
 Respond with structured JSON following this schema:
 
@@ -456,17 +482,20 @@ function generateRepoName(idea: { title: string; description: string | null }): 
 /**
  * GENERATE CRITICAL PYTHON MODULES
  *
- * The plan specifies critical Python module files that should be generated.
- * This function generates them using schema-driven structured output.
+ * Generates core module files BEFORE the notebook, so the notebook can import from them.
  *
- * Ensures that planned file structure is actually created.
+ * This function:
+ * 1. Takes module paths and project idea/plan
+ * 2. Generates complete, production-ready Python modules
+ * 3. Returns CodeFile objects ready for output
+ *
+ * No dependency on notebook cells - uses plan + idea for context.
+ * Modules are standalone and designed to be imported.
  */
 async function generateCriticalModules(
   idea: { title: string; description: string | null },
   plan: CodePlan,
-  filePathsToCreate: string[],
-  requiredPackages: string[],
-  notebookCells: any[]
+  filePathsToCreate: string[]
 ): Promise<CodeFile[]> {
   const model = new ChatAnthropic({
     modelName: 'claude-sonnet-4-5-20250929',
@@ -475,36 +504,38 @@ async function generateCriticalModules(
 
   const structuredModel = model.withStructuredOutput(MultipleFilesSchema);
 
-  // Extract key algorithms from notebook cells
-  const cellSummary = notebookCells
-    .filter((c: any) => c.cellType === 'code')
-    .slice(0, 5)
-    .map((c: any) => c.lines.map((l: any) => l.code).join('\n').substring(0, 150))
-    .join('\n---\n');
-
   const prompt = `You MUST generate Python module files for this project.
+These files will be IMPORTED by a Jupyter notebook, NOT duplicated.
+Generate them to be imported and used by other code.
 
 PROJECT: "${idea.title}"
 ${idea.description ? `DESCRIPTION: ${idea.description}` : ''}
 
+ARCHITECTURE: ${plan.architecture}
+COMPLEXITY: ${plan.codeComplexityScore}/10
+
 REQUIRED FILES TO GENERATE:
 ${filePathsToCreate.map((f, i) => `${i + 1}. ${f}`).join('\n')}
 
-DEPENDENCIES AVAILABLE: ${requiredPackages.length > 0 ? requiredPackages.join(', ') : 'numpy, scipy, matplotlib'}
-
-KEY ALGORITHMS FROM NOTEBOOK:
-${cellSummary}
+${plan.implementationSteps ? `IMPLEMENTATION STEPS:
+${plan.implementationSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : ''}
 
 YOUR TASK:
-Generate COMPLETE, production-ready Python code for EACH file listed above.
+Generate COMPLETE, production-ready Python modules that:
+1. Are designed to be IMPORTED and used by a notebook
+2. Provide core functionality for the project
+3. Have proper module-level docstrings
+4. Can safely import each other
+5. Include type hints where applicable
 
 REQUIREMENTS FOR EACH FILE:
 - Must be valid, executable Python code
+- Must have module-level docstring explaining purpose
 - Must have proper imports at the top
-- Must include module-level docstrings
-- Must be designed to work together (imports between files are OK)
-- Must implement the algorithms shown above
+- Public functions and classes with docstrings
+- Can include helper functions (prefix with _)
 - No placeholder code - COMPLETE implementations only
+- Designed for IMPORT and USE, not execution
 
 RESPONSE FORMAT - YOU MUST RETURN EXACTLY THIS STRUCTURE:
 {
@@ -512,15 +543,15 @@ RESPONSE FORMAT - YOU MUST RETURN EXACTLY THIS STRUCTURE:
     {
       "path": "${filePathsToCreate[0]}",
       "content": "# Complete Python code here..."
-    },
+    }${filePathsToCreate.length > 1 ? `,
     {
       "path": "${filePathsToCreate[1]}",
       "content": "# Complete Python code here..."
-    }
+    }` : ''}
   ]
 }
 
-CRITICAL: Return exactly ${filePathsToCreate.length} files with the paths listed above. Do NOT simplify or skip files.`;
+CRITICAL: Return exactly ${filePathsToCreate.length} files with the paths listed above.`;
 
   const result = await structuredModel.invoke(prompt);
 
