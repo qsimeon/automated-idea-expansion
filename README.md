@@ -1,6 +1,6 @@
 # Automated Idea Expansion
 
-An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts (with images + social share tweet) or complete code projects.
+An AI-powered agent orchestration system that transforms raw ideas into polished content. Add your half-formed thoughts, click "Expand," and watch a multi-stage AI pipeline generate blog posts (with images + social share button) or complete code projects.
 
 ---
 

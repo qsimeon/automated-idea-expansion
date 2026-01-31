@@ -215,9 +215,14 @@ async function createRepository(
   config: GitHubConfig,
   project: GeneratedCode
 ) {
+  const description = project.description || `AI-generated ${project.type} project`;
+  const truncatedDescription = description.length > 350
+    ? description.substring(0, 347) + '...'
+    : description;
+
   const { data: repo } = await octokit.repos.createForAuthenticatedUser({
     name: project.repoName,
-    description: project.description || `AI-generated ${project.type} project`,
+    description: truncatedDescription,
     private: config.makePrivate || false,
     auto_init: false, // Don't create default README - we'll upload our own files
   });

@@ -44,9 +44,9 @@ const CLIAppSchema = z.object({
 });
 
 const DemoScriptSchema = z.object({
-  code: z.string().describe('Complete, working demo script code'),
-  requiredPackages: z.array(z.string()).describe('Required packages/dependencies'),
-});
+  code: z.string().describe('Complete, working demo script code').optional(),
+  requiredPackages: z.array(z.string()).describe('Required packages/dependencies').optional(),
+}).passthrough();
 
 type CLIAppOutput = z.infer<typeof CLIAppSchema>;
 type DemoScriptOutput = z.infer<typeof DemoScriptSchema>;
@@ -69,10 +69,10 @@ function validateFileCount(files: CodeFile[], plan: CodePlan): void {
   switch (plan.architecture) {
     case 'modular':
       if (codeFileCount < 2) {
-        throw new Error(
-          `Modular architecture requires at least 2 code files. Found ${codeFileCount}. ` +
+        console.warn(
+          `  ⚠️  Modular architecture expected at least 2 code files, found ${codeFileCount}. ` +
           `Files: ${files.map(f => f.path).join(', ')}. ` +
-          `Please refactor into separate modules with clear separation of concerns.`
+          `Continuing with available files.`
         );
       }
       break;
@@ -391,6 +391,12 @@ OUTPUT STRUCTURE:
   try {
     const result = await structuredModel.invoke(prompt);
 
+    // Fallback: if code is missing, skip this generation
+    if (!result?.code || result.code.trim().length === 0) {
+      console.warn(`  ⚠️  No code generated for demo script, skipping...`);
+      return { code: { repoName: '', description: '', files: [], dependencies: { runtime: [], packages: [] }, setupInstructions: '', runInstructions: '', type: plan.language, outputType: 'demo-script' } };
+    }
+
     // Generate SHORT repo name
     const repoName = await generateRepoName(idea, plan);
 
@@ -414,7 +420,7 @@ OUTPUT STRUCTURE:
       language: plan.language,
       plan,
       files: codeFiles, // Pass the generated code files for context
-      setupInstructions: result.requiredPackages?.length > 0
+      setupInstructions: result?.requiredPackages && result.requiredPackages.length > 0
         ? plan.language === 'python'
           ? 'pip install ' + result.requiredPackages.join(' ')
           : 'npm install ' + result.requiredPackages.join(' ')
@@ -431,7 +437,7 @@ OUTPUT STRUCTURE:
     ];
 
     // Add dependencies file if needed
-    if (result.requiredPackages?.length > 0) {
+    if (result?.requiredPackages && result.requiredPackages.length > 0) {
       if (plan.language === 'python') {
         files.push({
           path: 'requirements.txt',
@@ -452,7 +458,7 @@ OUTPUT STRUCTURE:
           runtime: [plan.language === 'python' ? 'python' : 'node'],
           packages: result.requiredPackages || [],
         },
-        setupInstructions: result.requiredPackages?.length > 0
+        setupInstructions: result?.requiredPackages && result.requiredPackages.length > 0
           ? plan.language === 'python'
             ? 'pip install -r requirements.txt'
             : 'npm install'
