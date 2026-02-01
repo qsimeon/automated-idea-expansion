@@ -120,6 +120,12 @@ export async function generateImageForContent(
 /**
  * Generate image using available APIs (in priority order)
  *
+ * Priority order (highest quality first):
+ * 1. Google Gemini Imagen 3 (newest, highest quality)
+ * 2. Replicate FLUX Dev (expensive but best quality)
+ * 3. fal.ai FLUX Schnell (fast + cheap)
+ * 4. Hugging Face SDXL (free tier)
+ *
  * @param prompt - The image generation prompt
  * @param aspectRatio - Desired aspect ratio (default: '16:9')
  */
@@ -132,30 +138,54 @@ export async function generateImage(
   width: number;
   height: number;
 }> {
-  // Try fal.ai first (fast + generous free tier)
+  // ⭐ TASK 4: Try Gemini first (newest, highest quality model)
+  if (process.env.GOOGLE_API_KEY) {
+    try {
+      console.log('   🎨 Trying Gemini Imagen 3...');
+      return await generateWithGemini(prompt, aspectRatio);
+    } catch (geminiError: any) {
+      console.warn(
+        `   ⚠️  Gemini failed: ${geminiError.message || String(geminiError)}`
+      );
+      console.log('   🔄 Falling back to next provider...');
+    }
+  }
+
+  // Try fal.ai (fast + generous free tier)
   if (process.env.FAL_KEY) {
     try {
+      console.log('   🎨 Trying fal.ai FLUX Schnell...');
       return await generateWithFal(prompt, aspectRatio);
-    } catch (falError) {
-      console.warn('fal.ai failed, trying next option:', falError);
+    } catch (falError: any) {
+      console.warn(
+        `   ⚠️  fal.ai failed: ${falError.message || String(falError)}`
+      );
+      console.log('   🔄 Falling back to next provider...');
+    }
+  }
+
+  // Try Replicate (paid but high quality)
+  if (process.env.REPLICATE_API_TOKEN) {
+    try {
+      console.log('   🎨 Trying Replicate FLUX...');
+      return await generateWithReplicate(prompt, aspectRatio);
+    } catch (repError: any) {
+      console.warn(
+        `   ⚠️  Replicate failed: ${repError.message || String(repError)}`
+      );
+      console.log('   🔄 Falling back to next provider...');
     }
   }
 
   // Try Hugging Face (free tier)
   if (process.env.HUGGINGFACE_API_KEY) {
     try {
+      console.log('   🎨 Trying Hugging Face SDXL...');
       return await generateWithHuggingFace(prompt, aspectRatio);
-    } catch (hfError) {
-      console.warn('Hugging Face failed, trying next option:', hfError);
-    }
-  }
-
-  // Try Replicate (paid but cheap)
-  if (process.env.REPLICATE_API_TOKEN) {
-    try {
-      return await generateWithReplicate(prompt, aspectRatio);
-    } catch (repError) {
-      console.warn('Replicate failed:', repError);
+    } catch (hfError: any) {
+      console.warn(
+        `   ⚠️  Hugging Face failed: ${hfError.message || String(hfError)}`
+      );
     }
   }
 
@@ -322,4 +352,78 @@ async function generateWithReplicate(
     width: 1360,
     height: 768,
   };
+}
+
+/**
+ * Generate image with Google Gemini Imagen 3 (Newest model - highest quality)
+ *
+ * Gemini Imagen 3 is Google's latest image generation model with:
+ * - Highest visual quality and detail
+ * - Best understanding of complex prompts
+ * - Native aspect ratio support
+ * - Consistent, photorealistic results
+ */
+async function generateWithGemini(
+  prompt: string,
+  aspectRatio: '16:9' | '1:1' | '4:3' = '16:9'
+): Promise<{
+  url: string;
+  model: string;
+  width: number;
+  height: number;
+}> {
+  // Dynamically import to avoid dependency issues if SDK not installed
+  let GoogleGenerativeAI: any;
+  try {
+    // eslint-disable-next-line global-require
+    GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
+  } catch (error) {
+    throw new Error(
+      'Google Generative AI SDK not installed. Install with: npm install @google/generative-ai'
+    );
+  }
+
+  if (!process.env.GOOGLE_API_KEY) {
+    throw new Error('GOOGLE_API_KEY environment variable not set');
+  }
+
+  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
+  // Dimension mapping for aspect ratios
+  const dimensionMap = {
+    '16:9': { width: 1792, height: 1024 },
+    '1:1': { width: 1024, height: 1024 },
+    '4:3': { width: 1024, height: 768 },
+  };
+
+  const dimensions = dimensionMap[aspectRatio];
+
+  try {
+    // Use Imagen 3.0 (latest model)
+    const model = genAI.getGenerativeModel({
+      model: 'imagen-3.0-generate-001',
+    });
+
+    const result = await model.generateImages({
+      prompt: prompt,
+      numberOfImages: 1,
+      ...dimensions,
+    });
+
+    const generatedImage = result.images[0];
+
+    if (!generatedImage || !generatedImage.url) {
+      throw new Error('No image URL in Gemini response');
+    }
+
+    return {
+      url: generatedImage.url,
+      model: 'imagen-3.0 (Google Gemini)',
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+  } catch (error: any) {
+    console.error('Gemini image generation error:', error);
+    throw new Error(`Gemini failed: ${error.message || String(error)}`);
+  }
 }

@@ -203,6 +203,29 @@ ${exports}`;
     })
     .join('\n\n');
 
+  // Build example validation section
+  let validationExamples = '';
+  if (modules.length > 0) {
+    const exampleModules = modules.slice(0, 2);
+    const correctExamples = exampleModules
+      .map(m => {
+        const firstExport = m.exports[0];
+        if (!firstExport) return '';
+        return `from ${m.moduleName} import ${firstExport.name}  # ✅ This function EXISTS in ${m.fileName}`;
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    validationExamples = `
+CRITICAL - IMPORT VALIDATION EXAMPLES:
+
+✅ CORRECT IMPORT:
+${correctExamples}
+
+❌ INCORRECT IMPORT (DO NOT DO THIS):
+from energy_calc import calculate_result  # ❌ If calculate_result is NOT listed above, don't import it!`;
+  }
+
   return `
 ===== AVAILABLE MODULES IN THIS REPOSITORY =====
 
@@ -224,6 +247,10 @@ CRITICAL REQUIREMENTS:
 3. For functions in modules, ONLY use imports
 4. This reduces code duplication and improves maintainability
 5. If a module function exists, use it - don't write your own version
+6. ONLY import functions that ACTUALLY EXIST in the module signatures shown above
+7. DO NOT try to import functions that aren't listed in the module signatures
+8. If you need a function that isn't in a module, you can create it inline in your ${artifactType}
+${validationExamples}
 
 ===== END AVAILABLE MODULES =====
 `;
@@ -382,4 +409,123 @@ export function validateModuleImports(
     missingImports,
     inlineImplementations,
   };
+}
+
+/**
+ * EXTRACT DEPENDENCIES FROM CODE
+ *
+ * Parses imports/requires from code using the LLM for semantic understanding.
+ * Works for both Python and JavaScript/TypeScript.
+ *
+ * @param code - Source code to extract dependencies from
+ * @param language - Programming language ('python', 'javascript', 'typescript')
+ * @returns Array of package names (e.g., ['numpy', 'pandas', 'requests'])
+ *
+ * Note: Uses Claude Haiku for speed since this is a simple extraction task.
+ * Filters out standard library imports and relative imports.
+ */
+export async function extractDependencies(
+  code: string,
+  language: string
+): Promise<string[]> {
+  // Use Haiku for speed (this is a simple extraction task)
+  const model = new ChatAnthropic({
+    modelName: 'claude-haiku-4-5-20251001',
+    temperature: 0,
+  });
+
+  // Define schema for dependency extraction
+  const DependencySchema = z.object({
+    dependencies: z
+      .array(z.string())
+      .describe(
+        'List of external package names that need to be installed (e.g., numpy, pandas, torch, requests)'
+      ),
+  });
+
+  const structuredModel = model.withStructuredOutput(DependencySchema);
+
+  // Build language-specific prompt
+  let languageGuide = '';
+  if (language === 'python') {
+    languageGuide = `
+PYTHON RULES:
+- Include: numpy, pandas, torch, tensorflow, scipy, matplotlib, requests, flask, fastapi, etc.
+- EXCLUDE standard library: sys, os, json, re, math, datetime, collections, itertools, functools, etc.
+- EXCLUDE relative imports: from . import, from .. import, from .module import
+- Look for: import X, from X import Y, import X as Y`;
+  } else if (language === 'javascript' || language === 'typescript') {
+    languageGuide = `
+JAVASCRIPT/TYPESCRIPT RULES:
+- Include: express, axios, react, lodash, moment, async, uuid, etc.
+- EXCLUDE Node.js built-ins: fs, path, http, events, stream, util, etc.
+- EXCLUDE relative imports: from './module', from '../module', require('./path')
+- Look for: import X, import { X } from, require('package')`;
+  }
+
+  const prompt = `Extract ALL external package dependencies from this ${language} code.
+
+Code:
+\`\`\`${language}
+${code}
+\`\`\`
+
+${languageGuide}
+
+Rules:
+1. Return ONLY third-party packages that need npm install or pip install
+2. Return package names as they appear in npm/PyPI (e.g., 'requests', not 'import requests')
+3. For scoped packages, include the scope (e.g., '@google/generative-ai')
+4. Avoid duplicates
+5. Do NOT include relative imports or standard library modules
+6. If no external dependencies found, return empty array
+
+Return ONLY a JSON object with "dependencies" array.`;
+
+  try {
+    const result = await structuredModel.invoke(prompt);
+    // Return unique, sorted list
+    return Array.from(new Set(result.dependencies)).sort();
+  } catch (error) {
+    console.warn(
+      `⚠️  Failed to extract dependencies: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return [];
+  }
+}
+
+/**
+ * AGGREGATE ALL DEPENDENCIES FROM CODE FILES
+ *
+ * Extracts dependencies from all code files and returns a unified, deduplicated list.
+ * Skips configuration files (README, package.json, requirements.txt, etc.).
+ *
+ * @param files - Array of CodeFile objects
+ * @param language - Programming language
+ * @returns Sorted array of unique package names
+ */
+export async function aggregateAllDependencies(
+  files: CodeFile[],
+  language: string
+): Promise<string[]> {
+  const allDeps = new Set<string>();
+
+  // Filter to only actual code files
+  const codeFiles = files.filter(
+    f =>
+      !f.path.match(
+        /README\.md|package\.json|requirements\.txt|\.gitignore|\.md$|\.txt$|Cargo\.toml/i
+      )
+  );
+
+  for (const file of codeFiles) {
+    try {
+      const deps = await extractDependencies(file.content, language);
+      deps.forEach(dep => allDeps.add(dep));
+    } catch (error) {
+      console.warn(`⚠️  Failed to extract deps from ${file.path}:`, error);
+    }
+  }
+
+  return Array.from(allDeps).sort();
 }

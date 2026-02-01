@@ -77,18 +77,42 @@ ${ideaContent}
 
 TASK:
 Create a 1-sentence summary (max 150 characters) that captures the essence of this idea.
-- Be concise and punchy
-- Make it interesting enough to catch attention
-- Avoid generic phrases like "A discussion about..." or "An exploration of..."
-- Start with a strong verb or clear concept
+- Be PUNCHY and attention-grabbing (use active voice, strong verbs)
+- Make it interesting enough to catch attention immediately
+- Avoid generic phrases like "A discussion about...", "An exploration of...", "Build a..."
+- Focus on WHAT IT DOES or WHY IT MATTERS, not HOW it works
 - This will be used as a card title, so it should stand alone
+- Complete sentence that could be a headline
 
-EXAMPLES:
-- Bad: "A discussion about how to improve productivity" (too long, generic)
-- Good: "5-minute morning routine that doubles productivity" (specific, actionable)
+CRITICAL EXAMPLES - BAD vs GOOD:
 
-- Bad: "An exploration of different types of art" (too vague)
-- Good: "AI art tools: From text prompts to masterpieces" (specific, interesting)
+❌ BAD - Truncated text from the original idea:
+"Build a fashion app that makes recommendations for what pieces to buy based on my pinterest board"
+(too long, reads like instructions)
+
+✅ GOOD - Punchy, engagement-focused:
+"AI fashion stylist that curates outfits from your Pinterest aesthetic"
+(specific, benefit-focused, engaging)
+
+❌ BAD - Generic:
+"A discussion about how to improve productivity"
+
+✅ GOOD - Specific benefit:
+"5-minute morning routine that doubles productivity"
+
+❌ BAD - Vague:
+"An exploration of different types of art"
+
+✅ GOOD - Specific angle:
+"AI art tools: From text prompts to masterpieces"
+
+❌ BAD - Instructional:
+"Create a CLI tool for managing docker containers"
+
+✅ GOOD - Benefit-focused:
+"Docker container manager with one-click cleanup magic"
+
+Remember: This is a HEADLINE for a card, not a description. Make it compelling!
 
 Respond with ONLY the summary, nothing else.`;
 }

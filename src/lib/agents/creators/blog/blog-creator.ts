@@ -290,6 +290,14 @@ REQUIREMENTS:
 - Target ${plan.targetWordCount} words total
 - Tone: ${plan.tone}
 
+⭐ CRITICAL: FIRST SECTION HEADER MUST DIFFER FROM BLOG TITLE
+- Blog title: "${plan.title}"
+- First h2 section header MUST be DIFFERENT from this title
+- Examples of good first section headers: "Understanding the Basics", "The Problem", "Getting Started", "Why This Matters", "Breaking It Down"
+- NEVER repeat the blog title as a section header
+- Vary section headers based on content context
+- Use active voice and engaging language
+
 SOCIAL POST:
 Generate a compelling tweet that will link to the full blog post:
 - Max 280 characters INCLUDING the link placeholder

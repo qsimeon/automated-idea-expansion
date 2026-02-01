@@ -7,6 +7,8 @@ import { renderReadmeToMarkdown } from './readme-renderer';
 import {
   extractModuleSignatures,
   formatModuleContextForPrompt,
+  aggregateAllDependencies,
+  validateModuleImports,
   type ModuleContext,
 } from './module-context-extractor';
 import { z } from 'zod';
@@ -49,9 +51,9 @@ const CLIAppSchema = z.object({
 });
 
 const DemoScriptSchema = z.object({
-  code: z.string().describe('Complete, working demo script code').optional(),
-  requiredPackages: z.array(z.string()).describe('Required packages/dependencies').optional(),
-}).passthrough();
+  code: z.string().describe('Complete, working demo script code'),
+  requiredPackages: z.array(z.string()).describe('Required packages/dependencies').default([]),
+});
 
 // Schema for generating multiple code files (modules)
 const MultipleFilesSchema = z.object({
@@ -351,6 +353,31 @@ OUTPUT STRUCTURE:
       },
     ];
 
+    // ⭐ TASK 2: Validate imports if modules are present
+    if (moduleContext.length > 0 && plan.language === 'python') {
+      const validation = validateModuleImports(result.code, moduleContext);
+
+      if (validation.missingImports.length > 0) {
+        console.warn(`   ⚠️  Import validation found potential issues:`);
+        validation.missingImports.forEach(({ module, exports }) => {
+          console.warn(
+            `      ${module.fileName}: trying to import [${exports.join(', ')}] but these may not exist`
+          );
+        });
+      }
+
+      if (validation.inlineImplementations.length > 0) {
+        console.warn(`   ⚠️  Functions that should be imported instead:`);
+        console.warn(`      ${validation.inlineImplementations.join(', ')}`);
+      }
+
+      if (validation.usedModules.length > 0) {
+        console.log(
+          `   ✅ Correctly importing from ${validation.usedModules.length} module(s)`
+        );
+      }
+    }
+
     // Now generate AI-powered README with full context
     // Reconstruct the original idea string from title and description
     const ideaString = idea.description
@@ -377,12 +404,28 @@ OUTPUT STRUCTURE:
     ];
 
     // Add requirements/package file
-    if (plan.language === 'python' && result.requiredPackages?.length > 0) {
+    // ⭐ CRITICAL FIX: Aggregate dependencies from ALL code files (modules + main)
+    // Previously only used result.requiredPackages from main file
+    let allDependencies = result.requiredPackages || [];
+
+    if (plan.architecture === 'modular') {
+      try {
+        const aggregatedDeps = await aggregateAllDependencies(codeFiles, plan.language);
+        if (aggregatedDeps.length > 0) {
+          allDependencies = aggregatedDeps;
+          console.log(`   ✅ Aggregated dependencies: ${aggregatedDeps.join(', ')}`);
+        }
+      } catch (error) {
+        console.warn('⚠️  Failed to aggregate dependencies, using main file deps only');
+      }
+    }
+
+    if (plan.language === 'python' && allDependencies.length > 0) {
       files.push({
         path: 'requirements.txt',
-        content: result.requiredPackages.join('\n'),
+        content: allDependencies.join('\n'),
       });
-    } else if ((plan.language === 'javascript' || plan.language === 'typescript') && result.requiredPackages?.length > 0) {
+    } else if ((plan.language === 'javascript' || plan.language === 'typescript') && allDependencies.length > 0) {
       files.push({
         path: 'package.json',
         content: JSON.stringify(
@@ -394,7 +437,7 @@ OUTPUT STRUCTURE:
             scripts: {
               start: `node ${mainFile}`,
             },
-            dependencies: result.requiredPackages.reduce((acc: any, pkg: string) => {
+            dependencies: allDependencies.reduce((acc: any, pkg: string) => {
               acc[pkg] = '*';
               return acc;
             }, {}),
@@ -538,6 +581,31 @@ OUTPUT STRUCTURE:
       },
     ];
 
+    // ⭐ TASK 2: Validate imports if modules are present
+    if (moduleContext.length > 0 && plan.language === 'python') {
+      const validation = validateModuleImports(result.code, moduleContext);
+
+      if (validation.missingImports.length > 0) {
+        console.warn(`   ⚠️  Import validation found potential issues:`);
+        validation.missingImports.forEach(({ module, exports }) => {
+          console.warn(
+            `      ${module.fileName}: trying to import [${exports.join(', ')}] but these may not exist`
+          );
+        });
+      }
+
+      if (validation.inlineImplementations.length > 0) {
+        console.warn(`   ⚠️  Functions that should be imported instead:`);
+        console.warn(`      ${validation.inlineImplementations.join(', ')}`);
+      }
+
+      if (validation.usedModules.length > 0) {
+        console.log(
+          `   ✅ Correctly importing from ${validation.usedModules.length} module(s)`
+        );
+      }
+    }
+
     // Now generate AI-powered README with full context
     // Reconstruct the original idea string from title and description
     const ideaString = idea.description
@@ -566,11 +634,26 @@ OUTPUT STRUCTURE:
     ];
 
     // Add dependencies file if needed
-    if (result?.requiredPackages && result.requiredPackages.length > 0) {
+    // ⭐ CRITICAL FIX: Aggregate dependencies from ALL code files (modules + main)
+    let allDependencies = result?.requiredPackages || [];
+
+    if (plan.architecture === 'modular') {
+      try {
+        const aggregatedDeps = await aggregateAllDependencies(codeFiles, plan.language);
+        if (aggregatedDeps.length > 0) {
+          allDependencies = aggregatedDeps;
+          console.log(`   ✅ Aggregated dependencies: ${aggregatedDeps.join(', ')}`);
+        }
+      } catch (error) {
+        console.warn('⚠️  Failed to aggregate dependencies, using main file deps only');
+      }
+    }
+
+    if (allDependencies.length > 0) {
       if (plan.language === 'python') {
         files.push({
           path: 'requirements.txt',
-          content: result.requiredPackages.join('\n'),
+          content: allDependencies.join('\n'),
         });
       }
     }

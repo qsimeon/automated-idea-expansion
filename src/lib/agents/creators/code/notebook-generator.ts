@@ -7,6 +7,8 @@ import { renderReadmeToMarkdown } from './readme-renderer';
 import {
   extractModuleSignatures,
   formatModuleContextForPrompt,
+  aggregateAllDependencies,
+  validateModuleImports,
   type ModuleContext,
 } from './module-context-extractor';
 
@@ -226,18 +228,41 @@ export async function generateNotebook(
         },
       ];
 
-      // Add requirements.txt
-      if (result.requiredPackages.length > 0) {
-        files.push({
-          path: 'requirements.txt',
-          content: result.requiredPackages.join('\n'),
-        });
-      }
-
       // Add module files (generated in PHASE 1)
       if (generatedModuleFiles.length > 0) {
         console.log(`   ✅ Adding ${generatedModuleFiles.length} module file(s) to output...`);
         files.push(...generatedModuleFiles);
+      }
+
+      // ⭐ CRITICAL FIX: Aggregate dependencies from ALL code files (modules + notebook)
+      let allDependencies = result.requiredPackages;
+
+      if (generatedModuleFiles.length > 0) {
+        try {
+          const allCodeFiles = [
+            {
+              path: 'notebook.ipynb',
+              content: JSON.stringify(notebookContent, null, 2),
+              language: 'python',
+            },
+            ...generatedModuleFiles,
+          ];
+          const aggregatedDeps = await aggregateAllDependencies(allCodeFiles, 'python');
+          if (aggregatedDeps.length > 0) {
+            allDependencies = aggregatedDeps;
+            console.log(`   ✅ Aggregated dependencies from modules: ${aggregatedDeps.join(', ')}`);
+          }
+        } catch (error) {
+          console.warn('⚠️  Failed to aggregate dependencies, using notebook deps only');
+        }
+      }
+
+      // Add requirements.txt
+      if (allDependencies.length > 0) {
+        files.push({
+          path: 'requirements.txt',
+          content: allDependencies.join('\n'),
+        });
       }
 
       return {
