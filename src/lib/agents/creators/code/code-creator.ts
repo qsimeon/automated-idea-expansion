@@ -3,6 +3,7 @@ import { generateCode } from './generation-agent';
 import { reviewCode } from './critic-agent';
 import { fixCode } from './fixer-agent';
 import type { GeneratedCode, CodeCreationState } from './types';
+import { createLogger } from '@/lib/logging/logger';
 
 /**
  * MULTI-STAGE CODE CREATOR (V2)
@@ -39,8 +40,14 @@ export async function createCodeProject(idea: {
   content: any; // Will be transformed to match existing format
 
 }> {
-  console.log('\n🚀 === CODE CREATOR (Multi-Stage Pipeline) ===');
-  console.log(`   Idea: "${idea.title}"\n`);
+  const logger = createLogger({
+    ideaId: idea.id,
+    stage: 'code-creator',
+  });
+
+  logger.info('Code creator started', {
+    ideaTitle: idea.title,
+  });
 
   const state: CodeCreationState = {
     idea,
@@ -54,60 +61,64 @@ export async function createCodeProject(idea: {
 
   try {
     // STAGE 1: PLANNING
-    console.log('📋 STAGE 1: Planning');
-    console.log('   Agent: Planning Agent');
-    console.log('   Task: Decide output type, language, architecture\n');
+    logger.info('STAGE 1: Planning started', {
+      agent: 'Planning Agent',
+      task: 'Decide output type, language, architecture',
+    });
 
     const planResult = await planCodeProject(idea);
     state.plan = planResult.plan;
 
-    console.log(`   ✅ Plan complete: ${state.plan.outputType} in ${state.plan.language}`);
+    logger.info('STAGE 1: Planning complete', {
+      outputType: state.plan.outputType,
+      language: state.plan.language,
+    });
 
     // STAGE 2: GENERATION
-    console.log('🛠️  STAGE 2: Code Generation');
-    console.log('   Agent: Generation Agent');
-    console.log('   Task: Create code files based on plan\n');
+    logger.info('STAGE 2: Code generation started', {
+      agent: 'Generation Agent',
+      task: 'Create code files based on plan',
+    });
 
     const codeResult = await generateCode(state.plan, idea);
     state.code = codeResult.code;
 
-    console.log(`   ✅ Generated ${state.code.files.length} files`);
-    console.log(`   📁 Files: ${state.code.files.map((f) => f.path).join(', ')}`);
+    logger.info('STAGE 2: Code generation complete', {
+      filesGenerated: state.code.files.length,
+      files: state.code.files.map((f) => f.path),
+    });
 
     // STAGE 3: CODE REVIEW
-    console.log('🔍 STAGE 3: Code Review');
-    console.log('   Agent: Critic Agent');
-    console.log('   Task: Review for quality, security, correctness\n');
+    logger.info('STAGE 3: Code review started', {
+      agent: 'Critic Agent',
+      task: 'Review for quality, security, correctness',
+    });
 
     const reviewResult = await reviewCode(state.code, state.plan);
     state.review = reviewResult.review;
 
-    console.log(`   📊 Quality Score: ${state.review.overallScore}/100`);
-
-    // Log category scores (5-dimensional rubric)
-    if (state.review.categoryScores) {
-      console.log(`   📈 Category scores: C:${state.review.categoryScores.correctness} S:${state.review.categoryScores.security} Q:${state.review.categoryScores.codeQuality} Comp:${state.review.categoryScores.completeness} D:${state.review.categoryScores.documentation}`);
-    }
-
-    console.log(`   🐛 Issues: ${state.review.issues.length}`);
-    console.log(`   ✅ Recommendation: ${state.review.recommendation}`);
+    logger.info('STAGE 3: Code review complete', {
+      overallScore: state.review.overallScore,
+      categoryScores: state.review.categoryScores,
+      issuesCount: state.review.issues.length,
+      recommendation: state.review.recommendation,
+    });
 
     // Log detailed review results
     if (state.review.issues.length > 0) {
-      console.log('   Issues found:');
-      state.review.issues.forEach((issue) => {
-        const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️ ' : 'ℹ️ ';
-        console.log(`   ${icon} [${issue.file}] ${issue.message}`);
+      logger.info('Issues found in code review', {
+        issues: state.review.issues.map((issue) => ({
+          severity: issue.severity,
+          file: issue.file,
+          message: issue.message,
+        })),
       });
-      console.log('');
     }
 
     if (state.review.securityConcerns.length > 0) {
-      console.log('   🔒 Security concerns:');
-      state.review.securityConcerns.forEach((concern) => {
-        console.log(`      - ${concern}`);
+      logger.warn('Security concerns identified', {
+        securityConcerns: state.review.securityConcerns,
       });
-      console.log('');
     }
 
     // STAGE 4: QUALITY GATE & ITERATION LOOP
@@ -121,7 +132,9 @@ export async function createCodeProject(idea: {
         state.review.overallScore >= QUALITY_THRESHOLD &&
         state.review.recommendation === 'approve'
       ) {
-        console.log(`✅ Code quality acceptable (${state.review.overallScore}/100)\n`);
+        logger.info('Code quality acceptable', {
+          overallScore: state.review.overallScore,
+        });
         break;
       }
 
@@ -129,67 +142,93 @@ export async function createCodeProject(idea: {
       let shouldRegenerate = false;
       if (state.review.overallScore < POOR_QUALITY_THRESHOLD && state.attempts < 2) {
         shouldRegenerate = true;
-        console.log(`🔄 Score too low (${state.review.overallScore}), will regenerate all\n`);
+        logger.info('Score too low, will regenerate all', {
+          currentScore: state.review.overallScore,
+          threshold: POOR_QUALITY_THRESHOLD,
+        });
       } else if (state.review.recommendation === 'regenerate' && state.attempts < 2) {
         shouldRegenerate = true;
-        console.log(`🔄 Critic recommends full regeneration\n`);
+        logger.info('Critic recommends full regeneration');
       }
 
       state.attempts++;
 
       if (shouldRegenerate) {
         // Full regeneration
-        console.log(`🛠️  STAGE 4a: Full Regeneration (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
+        logger.info('STAGE 4a: Full regeneration started', {
+          attempt: state.attempts,
+          maxAttempts: MAX_ITERATIONS,
+        });
 
         const regenResult = await generateCode(state.plan!, idea);
         state.code = regenResult.code;
 
-        console.log(`   ✅ Regenerated ${state.code.files.length} files\n`);
+        logger.info('Full regeneration complete', {
+          filesRegenerated: state.code.files.length,
+        });
       } else {
         // Targeted fixes
-        console.log(`🔧 STAGE 4b: Targeted Fixes (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
+        logger.info('STAGE 4b: Targeted fixes started', {
+          attempt: state.attempts,
+          maxAttempts: MAX_ITERATIONS,
+        });
 
         const fixResult = await fixCode(state.code!, state.review, state.plan!);
         state.code = fixResult.code;
 
-        console.log(`   ✅ Fixed files: ${fixResult.filesFixed.join(', ')}\n`);
+        logger.info('Targeted fixes complete', {
+          filesFixed: fixResult.filesFixed,
+        });
       }
 
       // Re-review after changes
-      console.log(`🔍 STAGE 5: Re-review (Attempt ${state.attempts}/${MAX_ITERATIONS})`);
+      logger.info('STAGE 5: Re-review started', {
+        attempt: state.attempts,
+        maxAttempts: MAX_ITERATIONS,
+      });
 
       const prevScore = state.review.overallScore;
       const reReviewResult = await reviewCode(state.code!, state.plan!);
       state.review = reReviewResult.review;
 
       const scoreDiff = state.review.overallScore - prevScore;
-      console.log(
-        `   📊 Score: ${state.review.overallScore}/100 (${scoreDiff >= 0 ? '+' : ''}${scoreDiff})`
-      );
-      console.log(`   🐛 Issues: ${state.review.issues.length}\n`);
+      logger.info('Re-review complete', {
+        currentScore: state.review.overallScore,
+        previousScore: prevScore,
+        scoreDiff,
+        issuesCount: state.review.issues.length,
+      });
 
       // Check for score decline (fixes made it worse)
       if (scoreDiff < -10) {
-        console.log(`   ⚠️  Score declined significantly, stopping iterations\n`);
+        logger.warn('Score declined significantly, stopping iterations', {
+          scoreDiff,
+        });
         break;
       }
     }
 
     // Final quality check
     if (state.attempts >= MAX_ITERATIONS) {
-      console.log(`⚠️  Reached max iterations (${MAX_ITERATIONS})`);
+      logger.warn('Reached max iterations', {
+        maxAttempts: MAX_ITERATIONS,
+      });
       if (state.review.overallScore < QUALITY_THRESHOLD) {
-        console.log(`   ⚠️  Final score (${state.review.overallScore}) below threshold\n`);
+        logger.warn('Final score below threshold', {
+          finalScore: state.review.overallScore,
+          threshold: QUALITY_THRESHOLD,
+        });
         state.errors.push(`Code quality below threshold: ${state.review.overallScore}/100`);
       }
     }
 
-    console.log(`\n📊 === ITERATION SUMMARY ===`);
-    console.log(`   Regeneration/Fix Attempts: ${state.attempts}`);
-    console.log(`   Final Score: ${state.review.overallScore}/100\n`);
+    logger.info('Iteration summary', {
+      attempts: state.attempts,
+      finalScore: state.review.overallScore,
+    });
 
     // FINAL: Transform to expected format
-    console.log('✅ === PIPELINE COMPLETE ===\n');
+    logger.info('Pipeline complete');
 
     // Transform to match the existing code-creator.ts format
     // This ensures compatibility with the existing system
@@ -208,8 +247,10 @@ export async function createCodeProject(idea: {
       },
     };
   } catch (error) {
-    console.error('\n❌ === PIPELINE FAILED ===');
-    console.error(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}\n`);
+    logger.error('Pipeline failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
 
     throw new Error(
       `Multi-stage code creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`

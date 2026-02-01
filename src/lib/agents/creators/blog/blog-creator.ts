@@ -13,6 +13,8 @@ import {
 import { z } from 'zod';
 import { createLogger } from '@/lib/logging/logger';
 import { IdeaCreatorSchema, type IdeaForCreator } from '@/lib/db/schemas';
+import type { Idea } from '@/lib/db/types';
+import { MODEL_USE_CASES } from '@/lib/config/models';
 
 /**
  * BLOG CREATOR - Cell-Based Architecture
@@ -69,10 +71,10 @@ const BlogReviewSchema = z.object({
 /**
  * Main entry point for cell-based blog creation
  */
-export async function createBlog(ideaData: unknown): Promise<{
+export async function createBlog(ideaData: Idea): Promise<{
   content: any;
 }> {
-  // Validate idea with schema
+  // Validate idea with schema (runtime validation for safety)
   const idea = IdeaCreatorSchema.parse(ideaData);
 
   const logger = createLogger({
@@ -199,7 +201,7 @@ async function planBlog(
   logger: ReturnType<typeof createLogger>
 ): Promise<z.infer<typeof BlogPlanSchema>> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-5-nano-2025-08-07',
+    modelName: MODEL_USE_CASES.blogPlanning,
     // Note: GPT-5 Nano only supports default temperature (1)
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -244,7 +246,7 @@ async function generateBlogCells(
 ): Promise<BlogGeneration> {
   // Use Sonnet for complex structured output generation (Haiku doesn't handle complex schemas well)
   const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
+    modelName: MODEL_USE_CASES.blogGeneration,
     temperature: 0.8,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
@@ -293,10 +295,23 @@ REQUIREMENTS:
 ⭐ CRITICAL: FIRST SECTION HEADER MUST DIFFER FROM BLOG TITLE
 - Blog title: "${plan.title}"
 - First h2 section header MUST be DIFFERENT from this title
-- Examples of good first section headers: "Understanding the Basics", "The Problem", "Getting Started", "Why This Matters", "Breaking It Down"
 - NEVER repeat the blog title as a section header
 - Vary section headers based on content context
 - Use active voice and engaging language
+
+CONCRETE EXAMPLES:
+❌ BAD (if title is "Machine Learning Basics"):
+  First h2: "Machine Learning Basics" (exact repeat - FORBIDDEN)
+  First h2: "Introduction to Machine Learning Basics" (still too similar)
+
+✅ GOOD (if title is "Machine Learning Basics"):
+  First h2: "Understanding the Fundamentals"
+  First h2: "Why Machine Learning Matters"
+  First h2: "Getting Started with ML"
+  First h2: "The Core Concepts"
+  First h2: "Breaking Down the Algorithm"
+
+Your first h2 MUST be contextually relevant but textually different from "${plan.title}"
 
 SOCIAL POST:
 Generate a compelling tweet that will link to the full blog post:
@@ -389,7 +404,7 @@ async function reviewBlogCells(
   logger: ReturnType<typeof createLogger>
 ): Promise<z.infer<typeof BlogReviewSchema>> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini-2024-07-18',
+    modelName: MODEL_USE_CASES.blogReview,
     temperature: 0.5,
     apiKey: process.env.OPENAI_API_KEY,
   });

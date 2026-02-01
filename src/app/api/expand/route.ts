@@ -228,7 +228,7 @@ export async function POST(request: Request) {
       })
       .catch((error) => {
         // Handle pipeline errors
-        logger.error('❌ Pipeline failed', { error: error.message });
+        logger.error('Pipeline failed', { error: error.message });
 
         // Update execution with error
         supabaseAdmin
@@ -251,7 +251,11 @@ export async function POST(request: Request) {
       durationSoFar: 0,
     });
   } catch (error: any) {
-    console.error('❌ Expansion failed:', error);
+    const errorLogger = createLogger({ stage: 'api-endpoint' });
+    errorLogger.error('Expansion failed', {
+      error: error.message || 'Unknown error',
+      stack: error.stack,
+    });
 
     return NextResponse.json(
       {

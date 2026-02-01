@@ -1,6 +1,9 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan, GeneratedCode, CodeReview, CodeIssue } from './types';
+import { CodeIssueSchema, CodeReviewSchema } from './types';
 import { z } from 'zod';
+import { MODEL_USE_CASES } from '@/lib/config/models';
+import { createLogger } from '@/lib/logging/logger';
 
 /**
  * CRITIC AGENT (Structured Outputs)
@@ -33,48 +36,10 @@ import { z } from 'zod';
  * - **Fast**: Low latency
  */
 
-// Define schemas for code review
-const CodeIssueSchema = z.object({
-  severity: z.enum(['error', 'warning', 'suggestion']).describe('Severity level of the issue'),
-  file: z.string().describe('File path where the issue was found'),
-  line: z.union([z.number(), z.null()]).describe('Line number if applicable, or null'),
-  message: z.string().describe('Clear description of the issue'),
-  suggestion: z.union([z.string(), z.null()]).describe('Suggestion for how to fix, or null'),
-});
-
-const FilePrioritySchema = z.object({
-  file: z.string().describe('File path'),
-  priority: z.enum(['high', 'medium', 'low']).describe('Priority level for fixing'),
-  reason: z.string().describe('Why this file needs attention'),
-});
-
-const FixSuggestionSchema = z.object({
-  file: z.string().describe('File path to fix'),
-  issue: z.string().describe('Clear description of the problem'),
-  suggestedFix: z.string().describe('Detailed, implementable fix (include code examples)'),
-  priority: z.enum(['critical', 'important', 'minor']).describe('Priority level'),
-});
-
-const CategoryScoresSchema = z.object({
-  correctness: z.number().min(0).max(100).describe('Score for functional correctness (0-100)'),
-  security: z.number().min(0).max(100).describe('Score for security (0-100)'),
-  codeQuality: z.number().min(0).max(100).describe('Score for code quality (0-100)'),
-  completeness: z.number().min(0).max(100).describe('Score for completeness (0-100)'),
-  documentation: z.number().min(0).max(100).describe('Score for documentation quality including README (0-100)'),
-});
-
-const CodeReviewSchema = z.object({
-  overallScore: z.number().min(0).max(100).describe('Overall quality score (0-100)'),
-  hasErrors: z.boolean().describe('Whether critical errors were found'),
-  recommendation: z.enum(['approve', 'revise', 'regenerate']).describe('What action to take next'),
-  categoryScores: CategoryScoresSchema.describe('Scores by category'),
-  strengths: z.array(z.string()).describe('What the code does well'),
-  weaknesses: z.array(z.string()).describe('Areas needing improvement'),
-  securityConcerns: z.array(z.string()).describe('Security issues found'),
-  filePriority: z.array(FilePrioritySchema).describe('Files prioritized by fix urgency'),
-  fixSuggestions: z.array(FixSuggestionSchema).describe('Specific actionable fixes'),
-  issues: z.array(CodeIssueSchema).describe('All issues found'),
-});
+/**
+ * Note: Using CodeIssueSchema and CodeReviewSchema imported from ./types.ts
+ * This eliminates schema duplication and ensures consistency across the codebase.
+ */
 
 type CodeReviewOutput = z.infer<typeof CodeReviewSchema>;
 
@@ -82,11 +47,15 @@ export async function reviewCode(
   code: GeneratedCode,
   plan: CodePlan
 ): Promise<{ review: CodeReview }> {
-  console.log(`🔍 Reviewing ${code.files.length} files...`);
+  const logger = createLogger({ stage: 'critic-agent' });
+
+  logger.info('Reviewing code', {
+    filesCount: code.files.length,
+  });
 
   // Initialize GPT-5 Nano for cost-effective reviews
   if (!process.env.OPENAI_API_KEY) {
-    console.warn('⚠️  OPENAI_API_KEY not found, skipping code review');
+    logger.warn('OPENAI_API_KEY not found, skipping code review');
     return {
       review: {
         hasErrors: false,
@@ -105,7 +74,7 @@ export async function reviewCode(
   }
 
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini-2024-07-18',
+    modelName: MODEL_USE_CASES.codeReview,
     temperature: 0.5,
   });
 
@@ -117,17 +86,21 @@ export async function reviewCode(
   try {
     const result = await structuredModel.invoke(prompt);
 
-    console.log(`  📊 Score: ${result.overallScore}/100`);
-    console.log(`  📈 Category scores: C:${result.categoryScores.correctness} S:${result.categoryScores.security} Q:${result.categoryScores.codeQuality} Comp:${result.categoryScores.completeness}`);
-    console.log(`  🐛 Issues found: ${result.issues.length}`);
-    console.log(`  🔧 Fix suggestions: ${result.fixSuggestions.length}`);
-    console.log(`  ✅ Recommendation: ${result.recommendation}`);
+    logger.info('Code review complete', {
+      overallScore: result.overallScore,
+      categoryScores: result.categoryScores,
+      issuesCount: result.issues.length,
+      fixSuggestionsCount: result.fixSuggestions?.length || 0,
+      recommendation: result.recommendation,
+    });
 
     return {
       review: result,
     };
   } catch (error) {
-    console.error('❌ Critic agent failed:', error);
+    logger.error('Critic agent failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
 
     // Return a permissive review on failure (don't block the pipeline)
     return {
@@ -151,7 +124,7 @@ export async function reviewCode(
         filePriority: [],
         fixSuggestions: [],
       },
-      
+
     };
   }
 }

@@ -2,6 +2,8 @@ import { ChatOpenAI } from '@langchain/openai';
 import type { CodePlan } from './types';
 import { buildCodePlanningPrompt } from '../../prompts/code-planning-prompt';
 import { z } from 'zod';
+import { createLogger } from '@/lib/logging/logger';
+import { MODEL_USE_CASES } from '@/lib/config/models';
 
 /**
  * PLANNING AGENT (Structured Outputs)
@@ -83,10 +85,17 @@ export async function planCodeProject(idea: {
   title: string;
   description: string | null;
 }): Promise<{ plan: CodePlan }> {
-  console.log(`🎯 Planning code project for: "${idea.title}"`);
+  const logger = createLogger({
+    ideaId: idea.id,
+    stage: 'planning-agent',
+  });
+
+  logger.info('Planning code project', {
+    ideaTitle: idea.title,
+  });
 
   const model = new ChatOpenAI({
-    modelName: 'gpt-5-nano-2025-08-07',
+    modelName: MODEL_USE_CASES.planning,
     // Note: GPT-5 nano only supports default temperature (1)
   });
 
@@ -98,11 +107,14 @@ export async function planCodeProject(idea: {
   try {
     const result = await structuredModel.invoke(prompt);
 
-    console.log(`  ✅ Plan: ${result.outputType} using ${result.language}`);
-    console.log(`  📊 Complexity: ${result.estimatedComplexity}`);
-    console.log(`  💡 Reasoning: ${result.reasoning.substring(0, 100)}...`);
-    console.log(`  📋 Steps: ${result.implementationSteps.length} implementation steps`);
-    console.log(`  📁 Critical files: ${result.criticalFiles.join(', ')}`);
+    logger.info('Planning complete', {
+      outputType: result.outputType,
+      language: result.language,
+      complexity: result.estimatedComplexity,
+      reasoning: result.reasoning.substring(0, 100),
+      implementationStepsCount: result.implementationSteps.length,
+      criticalFiles: result.criticalFiles,
+    });
 
     // Convert to CodePlan (handle nullable framework)
     const plan: CodePlan = {
@@ -114,7 +126,9 @@ export async function planCodeProject(idea: {
       plan,
     };
   } catch (error) {
-    console.error('❌ Planning agent failed:', error);
+    logger.error('Planning agent failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     throw new Error(`Planning failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

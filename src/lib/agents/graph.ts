@@ -3,6 +3,7 @@ import { AgentState, type AgentStateType } from './types';
 import { routerAgent } from './router-agent';
 import { creatorAgent } from './creator-agent';
 import type { Logger } from '../logging/logger';
+import type { Idea } from '@/lib/db/types';
 
 /**
  * AGENT PIPELINE GRAPH
@@ -70,7 +71,7 @@ export async function runAgentPipeline({
   logger,
 }: {
   userId: string;
-  selectedIdea: any;
+  selectedIdea: Idea;
   executionId: string;
   logger: Logger;
 }): Promise<AgentStateType> {

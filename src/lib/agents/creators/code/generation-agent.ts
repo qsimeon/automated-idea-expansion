@@ -4,6 +4,8 @@ import type { CodePlan, GeneratedCode, CodeFile } from './types';
 import { generateNotebook } from './notebook-generator'; // Atomic schemas
 import { ReadmeSchema, type Readme } from './readme-schema';
 import { renderReadmeToMarkdown } from './readme-renderer';
+import { createLogger } from '@/lib/logging/logger';
+import { MODEL_USE_CASES } from '@/lib/config/models';
 import {
   extractModuleSignatures,
   formatModuleContextForPrompt,
@@ -60,7 +62,7 @@ const MultipleFilesSchema = z.object({
   files: z.array(z.object({
     path: z.string().describe('File path (e.g., "utils.py", "api.js")'),
     content: z.string().describe('Complete, working code for this file'),
-  })).describe('List of code files to create'),
+  })).describe('List of code files to create').default([]),
 });
 
 type CLIAppOutput = z.infer<typeof CLIAppSchema>;
@@ -74,6 +76,8 @@ type MultipleFilesOutput = z.infer<typeof MultipleFilesSchema>;
  * (excluding README, package.json, etc.) matches the declared architecture.
  */
 function validateFileCount(files: CodeFile[], plan: CodePlan): void {
+  const logger = createLogger({ stage: 'generation-agent' });
+
   // Count only actual code files (not README, config, or dependency files)
   const codeFiles = files.filter(
     f => !f.path.match(/README\.md|package\.json|requirements\.txt|\.gitignore|Cargo\.toml/i)
@@ -85,11 +89,11 @@ function validateFileCount(files: CodeFile[], plan: CodePlan): void {
   switch (plan.architecture) {
     case 'modular':
       if (codeFileCount < 2) {
-        console.warn(
-          `  ⚠️  Modular architecture expected at least 2 code files, found ${codeFileCount}. ` +
-          `Files: ${files.map(f => f.path).join(', ')}. ` +
-          `Continuing with available files.`
-        );
+        logger.warn('Modular architecture expected at least 2 code files', {
+          codeFileCount,
+          files: files.map(f => f.path),
+          message: 'Continuing with available files',
+        });
       }
       break;
 
@@ -108,7 +112,10 @@ function validateFileCount(files: CodeFile[], plan: CodePlan): void {
       break;
   }
 
-  console.log(`  ✅ File count validation passed: ${codeFileCount} code files for ${plan.architecture} architecture`);
+  logger.info('File count validation passed', {
+    codeFileCount,
+    architecture: plan.architecture,
+  });
 }
 
 /**
@@ -121,28 +128,34 @@ function validateFileCount(files: CodeFile[], plan: CodePlan): void {
  * This ensures we use expensive O1/O3 models only when complexity truly requires it.
  */
 function selectGenerationModel(plan: CodePlan): ChatAnthropic | ChatOpenAI {
+  const logger = createLogger({ stage: 'generation-agent' });
+
   switch (plan.modelTier) {
     case 'simple':
     case 'modular':
       // Use Claude Sonnet 4.5 for most code generation (best quality/cost ratio)
       return new ChatAnthropic({
-        modelName: 'claude-sonnet-4-5-20250929',
+        modelName: MODEL_USE_CASES.codeGenerationSimple,
         temperature: 0.3,
       });
 
     case 'complex':
       // Use O1 for complex architectures requiring deep reasoning
-      console.log(`🧠 Using O1 extended thinking for complex code (score: ${plan.codeComplexityScore}/10)`);
+      logger.info('Using O1 extended thinking for complex code', {
+        complexityScore: plan.codeComplexityScore,
+      });
       return new ChatOpenAI({
-        modelName: 'o1-2024-12-17', // O1 with extended thinking
+        modelName: MODEL_USE_CASES.codeGenerationComplex,
         temperature: 1, // O1 only supports temperature 1
       });
 
     default:
       // Fallback to Sonnet if modelTier not recognized
-      console.warn(`⚠️  Unknown modelTier: ${plan.modelTier}, defaulting to Sonnet`);
+      logger.warn('Unknown modelTier, defaulting to Sonnet', {
+        modelTier: plan.modelTier,
+      });
       return new ChatAnthropic({
-        modelName: 'claude-sonnet-4-5-20250929',
+        modelName: MODEL_USE_CASES.codeGenerationSimple,
         temperature: 0.3,
       });
   }
@@ -152,7 +165,14 @@ export async function generateCode(
   plan: CodePlan,
   idea: { id: string; title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  console.log(`🛠️  Generating ${plan.outputType} in ${plan.language}...`);
+  const logger = createLogger({
+    stage: 'generation-agent',
+  });
+
+  logger.info('Generating code', {
+    outputType: plan.outputType,
+    language: plan.language,
+  });
 
   // Route to specialized generator based on output type
   switch (plan.outputType) {
@@ -193,8 +213,10 @@ async function generateLibraryModules(
   plan: CodePlan,
   language: string
 ): Promise<{ files: CodeFile[]; moduleContext: ModuleContext[] }> {
+  const logger = createLogger({ stage: 'generation-agent' });
+
   const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
+    modelName: MODEL_USE_CASES.moduleSignatures,
     temperature: 0.3,
   });
 
@@ -241,20 +263,73 @@ RESPONSE FORMAT:
   ]
 }`;
 
-  const result = await structuredModel.invoke(prompt);
+  // Retry logic with exponential backoff
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  const codeFiles: CodeFile[] = result.files.map((f: any) => ({
-    path: f.path,
-    content: f.content,
-    language,
-  }));
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logger.info(`Generating library modules (attempt ${attempt}/${maxRetries})`);
 
-  // Extract signatures
-  const moduleContext = await extractModuleSignatures(codeFiles, language);
+      const result = await structuredModel.invoke(prompt);
 
-  console.log(`   ✅ Generated ${codeFiles.length} library module(s) for modular architecture`);
+      // Validate response is not empty
+      if (!result || !result.files || result.files.length === 0) {
+        throw new Error(
+          `LLM returned empty response: ${JSON.stringify(result)}. Expected ${libFiles.length} files.`
+        );
+      }
 
-  return { files: codeFiles, moduleContext };
+      // Validate we got the expected number of files
+      if (result.files.length < libFiles.length) {
+        logger.warn('Received fewer files than requested', {
+          expected: libFiles.length,
+          received: result.files.length,
+          files: result.files.map((f: any) => f.path),
+        });
+      }
+
+      const codeFiles: CodeFile[] = (result.files || []).map((f: any) => ({
+        path: f.path,
+        content: f.content,
+        language,
+      }));
+
+      // Extract signatures
+      const moduleContext = await extractModuleSignatures(codeFiles, language);
+
+      logger.info('Generated library modules for modular architecture', {
+        modulesCount: codeFiles.length,
+        attempt,
+      });
+
+      return { files: codeFiles, moduleContext };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      logger.error(`Module generation attempt ${attempt} failed`, {
+        error: lastError.message,
+        attempt,
+        maxRetries,
+      });
+
+      if (attempt < maxRetries) {
+        const delayMs = 1000 * Math.pow(2, attempt - 1); // Exponential backoff: 1s, 2s, 4s
+        logger.info(`Retrying after ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  // All retries failed - throw with detailed error
+  logger.error('All module generation attempts failed', {
+    attempts: maxRetries,
+    lastError: lastError?.message,
+  });
+
+  throw new Error(
+    `Failed to generate library modules after ${maxRetries} attempts. Last error: ${lastError?.message || 'Unknown error'}`
+  );
 }
 
 /**
@@ -274,8 +349,12 @@ async function generateCLIApp(
   let moduleFiles: CodeFile[] = [];
   let moduleContext: ModuleContext[] = [];
 
+  const logger = createLogger({
+    stage: 'generation-agent',
+  });
+
   if (plan.architecture === 'modular') {
-    console.log(`   📁 PHASE 1: Generating library modules for modular CLI...`);
+    logger.info('PHASE 1: Generating library modules for modular CLI');
     const result = await generateLibraryModules(idea, plan, plan.language);
     moduleFiles = result.files;
     moduleContext = result.moduleContext;
@@ -358,23 +437,24 @@ OUTPUT STRUCTURE:
       const validation = validateModuleImports(result.code, moduleContext);
 
       if (validation.missingImports.length > 0) {
-        console.warn(`   ⚠️  Import validation found potential issues:`);
-        validation.missingImports.forEach(({ module, exports }) => {
-          console.warn(
-            `      ${module.fileName}: trying to import [${exports.join(', ')}] but these may not exist`
-          );
+        logger.warn('Import validation found potential issues', {
+          missingImports: validation.missingImports.map(({ module, exports }) => ({
+            module: module.fileName,
+            exports,
+          })),
         });
       }
 
       if (validation.inlineImplementations.length > 0) {
-        console.warn(`   ⚠️  Functions that should be imported instead:`);
-        console.warn(`      ${validation.inlineImplementations.join(', ')}`);
+        logger.warn('Functions that should be imported instead', {
+          inlineImplementations: validation.inlineImplementations,
+        });
       }
 
       if (validation.usedModules.length > 0) {
-        console.log(
-          `   ✅ Correctly importing from ${validation.usedModules.length} module(s)`
-        );
+        logger.info('Correctly importing from modules', {
+          usedModulesCount: validation.usedModules.length,
+        });
       }
     }
 
@@ -413,10 +493,14 @@ OUTPUT STRUCTURE:
         const aggregatedDeps = await aggregateAllDependencies(codeFiles, plan.language);
         if (aggregatedDeps.length > 0) {
           allDependencies = aggregatedDeps;
-          console.log(`   ✅ Aggregated dependencies: ${aggregatedDeps.join(', ')}`);
+          logger.info('Aggregated dependencies', {
+            dependencies: aggregatedDeps,
+          });
         }
       } catch (error) {
-        console.warn('⚠️  Failed to aggregate dependencies, using main file deps only');
+        logger.warn('Failed to aggregate dependencies, using main file deps only', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -471,7 +555,9 @@ OUTPUT STRUCTURE:
       },
     };
   } catch (error) {
-    console.error('Failed to parse CLI app generation:', error);
+    logger.error('Failed to parse CLI app generation', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }
@@ -512,8 +598,12 @@ async function generateDemoScript(
   let moduleFiles: CodeFile[] = [];
   let moduleContext: ModuleContext[] = [];
 
+  const logger = createLogger({
+    stage: 'generation-agent',
+  });
+
   if (plan.architecture === 'modular') {
-    console.log(`   📁 PHASE 1: Generating library modules for modular demo...`);
+    logger.info('PHASE 1: Generating library modules for modular demo');
     const result = await generateLibraryModules(idea, plan, plan.language);
     moduleFiles = result.files;
     moduleContext = result.moduleContext;
@@ -564,7 +654,7 @@ OUTPUT STRUCTURE:
 
     // Fallback: if code is missing, skip this generation
     if (!result?.code || result.code.trim().length === 0) {
-      console.warn(`  ⚠️  No code generated for demo script, skipping...`);
+      logger.warn('No code generated for demo script, skipping');
       return { code: { repoName: '', description: '', files: [], dependencies: { runtime: [], packages: [] }, setupInstructions: '', runInstructions: '', type: plan.language, outputType: 'demo-script' } };
     }
 
@@ -586,23 +676,24 @@ OUTPUT STRUCTURE:
       const validation = validateModuleImports(result.code, moduleContext);
 
       if (validation.missingImports.length > 0) {
-        console.warn(`   ⚠️  Import validation found potential issues:`);
-        validation.missingImports.forEach(({ module, exports }) => {
-          console.warn(
-            `      ${module.fileName}: trying to import [${exports.join(', ')}] but these may not exist`
-          );
+        logger.warn('Import validation found potential issues', {
+          missingImports: validation.missingImports.map(({ module, exports }) => ({
+            module: module.fileName,
+            exports,
+          })),
         });
       }
 
       if (validation.inlineImplementations.length > 0) {
-        console.warn(`   ⚠️  Functions that should be imported instead:`);
-        console.warn(`      ${validation.inlineImplementations.join(', ')}`);
+        logger.warn('Functions that should be imported instead', {
+          inlineImplementations: validation.inlineImplementations,
+        });
       }
 
       if (validation.usedModules.length > 0) {
-        console.log(
-          `   ✅ Correctly importing from ${validation.usedModules.length} module(s)`
-        );
+        logger.info('Correctly importing from modules', {
+          usedModulesCount: validation.usedModules.length,
+        });
       }
     }
 
@@ -642,10 +733,14 @@ OUTPUT STRUCTURE:
         const aggregatedDeps = await aggregateAllDependencies(codeFiles, plan.language);
         if (aggregatedDeps.length > 0) {
           allDependencies = aggregatedDeps;
-          console.log(`   ✅ Aggregated dependencies: ${aggregatedDeps.join(', ')}`);
+          logger.info('Aggregated dependencies', {
+            dependencies: aggregatedDeps,
+          });
         }
       } catch (error) {
-        console.warn('⚠️  Failed to aggregate dependencies, using main file deps only');
+        logger.warn('Failed to aggregate dependencies, using main file deps only', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -681,7 +776,9 @@ OUTPUT STRUCTURE:
       },
     };
   } catch (error) {
-    console.error('Failed to parse demo script generation:', error);
+    logger.error('Failed to parse demo script generation', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }
@@ -710,7 +807,7 @@ async function generateReadme(context: {
 }): Promise<string> {
   // Use Claude Sonnet 4.5 for best documentation quality
   const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-5-20250929',
+    modelName: MODEL_USE_CASES.readmeGeneration,
     temperature: 0.3, // Lower for consistency with schema
   });
 
@@ -761,26 +858,33 @@ Installation steps MUST include proper prerequisites.
 
 Generate now:`;
 
+  const logger = createLogger({ stage: 'generation-agent' });
+
   try {
     // Get structured Readme object from Claude
     const readmeData = await structuredModel.invoke(prompt);
 
-    console.log(`  ✅ Generated structured README`);
-    console.log(`     - Features: ${readmeData.features.length}`);
-    console.log(`     - Installation steps: ${readmeData.installationSteps.length}`);
-    console.log(`     - Usage examples: ${readmeData.usageExamples.length}`);
-    console.log(`     - Troubleshooting: ${readmeData.troubleshooting.length}`);
+    logger.info('Generated structured README', {
+      featuresCount: readmeData.features.length,
+      installationStepsCount: readmeData.installationSteps.length,
+      usageExamplesCount: readmeData.usageExamples.length,
+      troubleshootingCount: readmeData.troubleshooting.length,
+    });
 
     // Render structured data to markdown deterministically
     const markdown = renderReadmeToMarkdown(readmeData);
 
-    console.log(`  📝 Rendered to markdown (${markdown.length} characters)`);
+    logger.info('Rendered to markdown', {
+      markdownLength: markdown.length,
+    });
     return markdown;
   } catch (error) {
-    console.error('❌ README generation failed:', error);
+    logger.error('README generation failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     // Fallback: Create minimal README from available data
-    console.warn('⚠️  Using minimal fallback README');
+    logger.warn('Using minimal fallback README');
 
     // Extract title from ideaString (first line before colon)
     const titleFromIdea = context.ideaString.split(':')[0] || 'Project';
@@ -824,7 +928,7 @@ async function generateRepoName(
 ): Promise<string> {
   // Use GPT-5 nano - fastest and most affordable for simple tasks
   const model = new ChatOpenAI({
-    modelName: 'gpt-5-nano-2025-08-07',
+    modelName: MODEL_USE_CASES.repoNaming,
     // Note: GPT-5 nano only supports default temperature (1)
   });
 
@@ -848,6 +952,8 @@ EXAMPLES:
 
 Respond with ONLY the repo name, nothing else:`;
 
+  const logger = createLogger({ stage: 'generation-agent' });
+
   try {
     const response = await model.invoke(prompt);
     let repoName = response.content.toString().trim();
@@ -869,10 +975,12 @@ Respond with ONLY the repo name, nothing else:`;
       repoName = toKebabCase(idea.title).substring(0, 30);
     }
 
-    console.log(`📛 Generated repo name: "${repoName}"`);
+    logger.info('Generated repo name', { repoName });
     return repoName;
   } catch (error) {
-    console.warn('⚠️  Repo name generation failed, using fallback');
+    logger.warn('Repo name generation failed, using fallback', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return toKebabCase(idea.title).substring(0, 30);
   }
 }

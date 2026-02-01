@@ -2,6 +2,7 @@ import type { AgentStateType } from './types';
 import type { Logger } from '../logging/logger';
 import { z } from 'zod';
 import { callLLMStructured } from '../llm/llm-service';
+import { MODEL_USE_CASES, MODEL_REGISTRY } from '@/lib/config/models';
 
 const RouterResponseSchema = z.object({
   format: z.enum(['blog_post', 'github_repo']),
@@ -53,12 +54,12 @@ export async function routerAgent(
       {
         primary: {
           provider: 'openai',
-          model: 'gpt-4o-mini-2024-07-18',
+          model: MODEL_USE_CASES.routing,
           options: { temperature: 0.5 },
         },
         fallback: {
           provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
+          model: MODEL_REGISTRY.anthropic.haiku,
           options: { temperature: 0.5 },
         },
       },

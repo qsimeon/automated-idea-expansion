@@ -1,6 +1,7 @@
 import type { Logger } from '../logging/logger';
 import { z } from 'zod';
 import { callLLMStructured } from '../llm/llm-service';
+import { MODEL_USE_CASES, MODEL_REGISTRY } from '@/lib/config/models';
 
 export const IdeaSummarySchema = z.object({
   summary: z.string()
@@ -43,12 +44,12 @@ export async function ideaSummarizer(
       {
         primary: {
           provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
+          model: MODEL_USE_CASES.ideaSummary,
           options: { temperature: 0.7 },
         },
         fallback: {
           provider: 'openai',
-          model: 'gpt-4o-mini-2024-07-18',
+          model: MODEL_REGISTRY.openai.mini,
           options: { temperature: 0.7 },
         },
       },

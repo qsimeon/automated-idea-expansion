@@ -6,6 +6,7 @@ import { NoCreditsWarning } from '@/components/credits/buy-credits-button';
 interface Idea {
   id: string;
   title: string;
+  summary: string | null;
   description: string | null;
   status: string;
   created_at: string;
@@ -252,7 +253,7 @@ export default function IdeasPage() {
           // Don't stop polling on individual errors - network might be flaky
           console.error('Polling error:', pollError);
         }
-      }, 2000); // Poll every 2 seconds
+      }, 5000); // Poll every 5 seconds (reduced from 2s to cut log spam)
 
       // Store interval ID for cleanup
       setPollIntervalId(pollInterval);
@@ -415,7 +416,7 @@ export default function IdeasPage() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                       <h3 style={{ fontSize: '18px', margin: 0, fontWeight: 'bold' }}>
-                        {idea.title}
+                        {idea.summary || idea.title}
                       </h3>
                       <span
                         style={{
@@ -431,7 +432,7 @@ export default function IdeasPage() {
                       </span>
                     </div>
 
-                    {idea.description && idea.description !== idea.title && (
+                    {idea.description && idea.description !== (idea.summary || idea.title) && (
                       <p style={{ color: '#666', marginTop: '10px', marginBottom: '0' }}>
                         {idea.description}
                       </p>
@@ -519,7 +520,7 @@ export default function IdeasPage() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                       <h3 style={{ fontSize: '18px', margin: 0, fontWeight: 'bold' }}>
-                        {idea.title}
+                        {idea.summary || idea.title}
                       </h3>
                       <span
                         style={{
@@ -535,7 +536,7 @@ export default function IdeasPage() {
                       </span>
                     </div>
 
-                    {idea.description && idea.description !== idea.title && (
+                    {idea.description && idea.description !== (idea.summary || idea.title) && (
                       <p style={{ color: '#666', marginTop: '10px', marginBottom: '0' }}>
                         {idea.description}
                       </p>

@@ -1,5 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { ImageSpec, GeneratedImage } from '../types';
+import { MODEL_USE_CASES } from '@/lib/config/models';
 
 /**
  * IMAGE GENERATION SUBAGENT
@@ -27,7 +28,7 @@ export async function createImagePrompt(
   contentContext?: string // Optional context from blog/thread
 ): Promise<string> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini-2024-07-18',
+    modelName: MODEL_USE_CASES.imagePrompt,
     temperature: 0.9, // High creativity
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -64,7 +65,7 @@ export async function generateImageCaption(
   concept: string
 ): Promise<string> {
   const model = new ChatOpenAI({
-    modelName: 'gpt-4o-mini-2024-07-18',
+    modelName: MODEL_USE_CASES.imagePrompt,
     temperature: 0.7,
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -372,22 +373,38 @@ async function generateWithGemini(
   width: number;
   height: number;
 }> {
+  // Pre-flight validation: Check API key
+  if (!process.env.GOOGLE_API_KEY) {
+    console.error('   ❌ GOOGLE_API_KEY not set in environment variables');
+    throw new Error(
+      'GOOGLE_API_KEY environment variable not set. ' +
+      'Get your API key from: https://ai.google.dev/ and add it to .env.local'
+    );
+  }
+
+  // Validate API key format (basic check)
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (apiKey.length < 20) {
+    console.error('   ❌ GOOGLE_API_KEY appears invalid (too short)');
+    throw new Error(
+      'GOOGLE_API_KEY appears invalid. Expected format: AIza... ' +
+      'Check your API key at: https://ai.google.dev/'
+    );
+  }
+
   // Dynamically import to avoid dependency issues if SDK not installed
   let GoogleGenerativeAI: any;
   try {
     // eslint-disable-next-line global-require
     GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
   } catch (error) {
+    console.error('   ❌ Google Generative AI SDK not installed');
     throw new Error(
       'Google Generative AI SDK not installed. Install with: npm install @google/generative-ai'
     );
   }
 
-  if (!process.env.GOOGLE_API_KEY) {
-    throw new Error('GOOGLE_API_KEY environment variable not set');
-  }
-
-  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+  const genAI = new GoogleGenerativeAI(apiKey);
 
   // Dimension mapping for aspect ratios
   const dimensionMap = {
@@ -398,23 +415,34 @@ async function generateWithGemini(
 
   const dimensions = dimensionMap[aspectRatio];
 
+  console.log(`   🎨 Gemini config: model=imagen-3.0, dimensions=${dimensions.width}x${dimensions.height}`);
+
   try {
     // Use Imagen 3.0 (latest model)
     const model = genAI.getGenerativeModel({
       model: 'imagen-3.0-generate-001',
     });
 
+    console.log('   📡 Calling Gemini API...');
     const result = await model.generateImages({
       prompt: prompt,
       numberOfImages: 1,
       ...dimensions,
     });
 
+    console.log('   ✅ Gemini API responded');
+
     const generatedImage = result.images[0];
 
     if (!generatedImage || !generatedImage.url) {
+      console.error('   ❌ No image URL in Gemini response', {
+        responseKeys: result ? Object.keys(result) : [],
+        imagesLength: result?.images?.length,
+      });
       throw new Error('No image URL in Gemini response');
     }
+
+    console.log('   ✅ Image URL extracted successfully');
 
     return {
       url: generatedImage.url,
@@ -423,7 +451,31 @@ async function generateWithGemini(
       height: dimensions.height,
     };
   } catch (error: any) {
-    console.error('Gemini image generation error:', error);
-    throw new Error(`Gemini failed: ${error.message || String(error)}`);
+    // Enhanced error logging with actionable diagnostics
+    console.error('   ❌ Gemini image generation error:', {
+      errorType: error?.constructor?.name,
+      errorMessage: error?.message,
+      errorCode: error?.code,
+      statusCode: error?.response?.status,
+      statusText: error?.response?.statusText,
+    });
+
+    // Provide actionable error messages based on error type
+    let actionableMessage = error.message || String(error);
+
+    // Check for common error patterns
+    if (error.message?.includes('API key')) {
+      actionableMessage = 'API key authentication failed. Verify your GOOGLE_API_KEY is correct.';
+    } else if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
+      actionableMessage = 'API quota exceeded or rate limited. Check your Google Cloud quota.';
+    } else if (error.message?.includes('permission') || error.message?.includes('403')) {
+      actionableMessage = 'Permission denied. Ensure Imagen API is enabled in Google Cloud Console.';
+    } else if (error.message?.includes('not found') || error.message?.includes('404')) {
+      actionableMessage = 'Model not found. Verify imagen-3.0-generate-001 is available in your region.';
+    } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      actionableMessage = 'Network error connecting to Google API. Check your internet connection.';
+    }
+
+    throw new Error(`Gemini failed: ${actionableMessage}`);
   }
 }
