@@ -36,6 +36,9 @@ export default function IdeasPage() {
   // Expand state
   const [expanding, setExpanding] = useState(false);
   const [expandingId, setExpandingId] = useState<string | null>(null);
+  const [expandProgress, setExpandProgress] = useState(0);
+  const [expandExecutionId, setExpandExecutionId] = useState<string | null>(null);
+  const [pollIntervalId, setPollIntervalId] = useState<NodeJS.Timeout | null>(null);
 
   // Usage state
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -46,6 +49,15 @@ export default function IdeasPage() {
     fetchIdeas();
     fetchUsage();
   }, []);
+
+  // Cleanup on unmount - clear any polling intervals
+  useEffect(() => {
+    return () => {
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+      }
+    };
+  }, [pollIntervalId]);
 
   const fetchIdeas = async () => {
     try {
@@ -133,10 +145,12 @@ export default function IdeasPage() {
   const handleExpand = async (specificIdeaId?: string) => {
     setExpanding(true);
     setExpandingId(specificIdeaId || null);
+    setExpandProgress(0);
     setError('');
     setSuccess('');
 
     try {
+      // 1. START THE EXPANSION (returns immediately)
       const response = await fetch('/api/expand', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,38 +161,119 @@ export default function IdeasPage() {
 
       const data = await response.json();
 
-      if (data.success) {
-        if (data.outputId) {
-          // Show success with link to view output
-          const formatEmoji =
-            data.content?.format === 'blog_post' ? '📝' :
-            data.content?.format === 'github_repo' ? '💻' : '✨';
-
-          setSuccess(
-            `${formatEmoji} Success! Generated ${data.content?.format || 'content'}: ${data.content?.preview || 'View it now!'}`
-          );
-
-          // Redirect to output after a brief delay
-          setTimeout(() => {
-            window.location.href = `/outputs/${data.outputId}`;
-          }, 1500);
-        } else {
-          setSuccess(data.message || 'Expansion complete!');
-        }
-
-        // Refresh ideas to update status
-        fetchIdeas();
-
-        // Refresh usage to show updated credits
-        fetchUsage();
-      } else {
-        setError(data.error || 'Failed to expand idea');
+      if (!data.success) {
+        setError(data.error || 'Failed to start expansion');
+        setExpanding(false);
+        setExpandingId(null);
+        return;
       }
+
+      // 2. GOT EXECUTION ID - START POLLING
+      const executionId = data.executionId;
+      setExpandExecutionId(executionId);
+
+      // Clear any existing polling interval
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+      }
+
+      // Poll every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(`/api/expand/status?executionId=${executionId}`);
+          const statusData = await statusResponse.json();
+
+          if (!statusData.success) {
+            clearInterval(pollInterval);
+            setPollIntervalId(null);
+            setError(statusData.error || 'Failed to check status');
+            setExpanding(false);
+            setExpandingId(null);
+            setExpandExecutionId(null);
+            return;
+          }
+
+          // Update progress
+          setExpandProgress(statusData.progress || 0);
+
+          // Check if completed
+          if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            setPollIntervalId(null);
+
+            if (statusData.outputId) {
+              // Show success with link to view output
+              setSuccess('✨ Success! Expansion complete. Redirecting...');
+
+              // Refresh ideas to update status
+              fetchIdeas();
+
+              // Refresh usage to show updated credits
+              fetchUsage();
+
+              // Redirect to output after a brief delay
+              setTimeout(() => {
+                window.location.href = `/outputs/${statusData.outputId}`;
+              }, 1500);
+            } else {
+              setSuccess('Expansion complete!');
+              fetchIdeas();
+              fetchUsage();
+            }
+
+            setExpanding(false);
+            setExpandingId(null);
+            setExpandExecutionId(null);
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            setPollIntervalId(null);
+            setError(statusData.errorMessage || 'Expansion failed');
+            setExpanding(false);
+            setExpandingId(null);
+            setExpandExecutionId(null);
+            fetchIdeas();
+          } else if (statusData.status === 'partial') {
+            clearInterval(pollInterval);
+            setPollIntervalId(null);
+            setSuccess('Expansion completed with some errors. Check the output.');
+            fetchIdeas();
+            fetchUsage();
+            setExpanding(false);
+            setExpandingId(null);
+            setExpandExecutionId(null);
+
+            if (statusData.outputId) {
+              setTimeout(() => {
+                window.location.href = `/outputs/${statusData.outputId}`;
+              }, 1500);
+            }
+          }
+        } catch (pollError: any) {
+          // Don't stop polling on individual errors - network might be flaky
+          console.error('Polling error:', pollError);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      // Store interval ID for cleanup
+      setPollIntervalId(pollInterval);
+
+      // Timeout after 10 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setPollIntervalId(null);
+        if (expanding) {
+          setError('Expansion timed out after 10 minutes');
+          setExpanding(false);
+          setExpandingId(null);
+          setExpandExecutionId(null);
+        }
+      }, 600000); // 10 minutes
+
     } catch (err: any) {
       setError(err.message || 'Failed to expand idea');
-    } finally {
       setExpanding(false);
       setExpandingId(null);
+      setExpandExecutionId(null);
     }
   };
 
@@ -473,7 +568,9 @@ export default function IdeasPage() {
                             cursor: expanding && expandingId === idea.id ? 'not-allowed' : 'pointer',
                           }}
                         >
-                          {expanding && expandingId === idea.id ? '⏳ Expanding...' : '✨ Expand This'}
+                          {expanding && expandingId === idea.id
+                            ? `⏳ Expanding... ${expandProgress}%`
+                            : '✨ Expand This'}
                         </button>
                         <button
                           onClick={() => handleDelete(idea.id)}

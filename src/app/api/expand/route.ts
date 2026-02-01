@@ -122,155 +122,133 @@ export async function POST(request: Request) {
       status: selectedIdea.status,
     });
 
-    // 6. RUN AGENT PIPELINE
-    logger.info('🚀 Starting agent pipeline', {
+    // 6. START AGENT PIPELINE IN BACKGROUND
+    logger.info('🚀 Starting agent pipeline (background)', {
       ideaId: selectedIdea.id,
       ideaTitle: selectedIdea.title,
     });
 
-    const result = await runAgentPipeline({
+    // Run pipeline in background without awaiting
+    // This allows us to return immediately while work continues
+    runAgentPipeline({
       userId,
       selectedIdea,
       executionId,
       logger,
-    });
+    })
+      .then(async (result) => {
+        // Calculate duration
+        const endTime = new Date();
+        const durationSeconds = Math.floor(
+          (endTime.getTime() - startTime.getTime()) / 1000
+        );
 
-    // Calculate duration
-    const endTime = new Date();
-    const durationSeconds = Math.floor(
-      (endTime.getTime() - startTime.getTime()) / 1000
-    );
+        // Determine status
+        const hasErrors = result.errors.length > 0;
+        const hasContent = !!result.generatedContent;
+        const status = hasErrors ? (hasContent ? 'partial' : 'failed') : 'completed';
 
-    // Determine status
-    const hasErrors = result.errors.length > 0;
-    const hasContent = !!result.generatedContent;
-    const status = hasErrors ? (hasContent ? 'partial' : 'failed') : 'completed';
+        // CONSUME CREDIT (only if pipeline succeeded)
+        let creditType: 'free' | 'paid' | null = null;
 
-    // 7. CONSUME CREDIT (only if pipeline succeeded)
-    let creditType: 'free' | 'paid' | null = null;
-    let updatedUsage = usageStatus;
-
-    if (status === 'completed' && hasContent) {
-      try {
-        creditType = await consumeExpansion(userId);
-        logger.info('💳 Credit consumed', {
-          creditType,
-          freeRemaining: usageStatus.freeRemaining - (creditType === 'free' ? 1 : 0),
-          paidRemaining: usageStatus.paidRemaining - (creditType === 'paid' ? 1 : 0),
-        });
-
-        // Update usage status for response
-        updatedUsage = {
-          ...usageStatus,
-          freeRemaining: usageStatus.freeRemaining - (creditType === 'free' ? 1 : 0),
-          paidRemaining: usageStatus.paidRemaining - (creditType === 'paid' ? 1 : 0),
-          totalUsed: usageStatus.totalUsed + 1,
-          allowed: true,
-        };
-      } catch (error) {
-        logger.error('❌ Failed to consume credit', { error });
-        // Don't fail the whole request if credit consumption fails
-        // Admin can manually adjust later
-      }
-    }
-
-    // 8. SAVE RESULTS
-    await supabaseAdmin
-      .from('executions')
-      .update({
-        selected_idea_id: result.selectedIdea?.id || null,
-        format_chosen: result.chosenFormat,
-        format_reasoning: result.formatReasoning,
-        status,
-        error_message: result.errors.join('; ') || null,
-        duration_seconds: durationSeconds,
-        completed_at: endTime.toISOString(),
-      })
-      .eq('id', executionId);
-
-    // If content was generated, save it
-    let outputId: string | null = null;
-    if (result.generatedContent && result.selectedIdea) {
-      outputId = crypto.randomUUID();
-
-      const { data: outputData, error: outputError } = await supabaseAdmin
-        .from('outputs')
-        .insert({
-          id: outputId,
-          execution_id: executionId,
-          user_id: userId,
-          idea_id: result.selectedIdea.id,
-          format: result.chosenFormat!,
-          content: result.generatedContent,
-          published: false,
-        })
-        .select()
-        .single();
-
-      if (outputError) {
-        logger.error('❌ Failed to save output', { error: outputError });
-      } else {
-        logger.info('💾 Output saved', {
-          outputId,
-          format: result.chosenFormat,
-          ideaId: result.selectedIdea.id,
-        });
-      }
-
-      // Mark idea as expanded
-      await supabaseAdmin
-        .from('ideas')
-        .update({ status: 'expanded' })
-        .eq('id', result.selectedIdea.id);
-    }
-
-    // 9. LOG COMPLETION
-    logger.info('✅ Expansion complete', {
-      status,
-      selectedIdea: result.selectedIdea?.title,
-      chosenFormat: result.chosenFormat,
-      durationSeconds,
-      outputId,
-      creditType,
-      creditsRemaining: updatedUsage.freeRemaining + updatedUsage.paidRemaining,
-    });
-
-    // 10. RETURN RESPONSE
-    return NextResponse.json({
-      success: status === 'completed' && !hasErrors,
-      execution: {
-        id: executionId,
-        status,
-        selectedIdea: result.selectedIdea
-          ? {
-              id: result.selectedIdea.id,
-              title: result.selectedIdea.title,
-            }
-          : null,
-        format: result.chosenFormat,
-        durationSeconds,
-        errors: result.errors,
-      },
-      content: result.generatedContent
-        ? {
-            format: result.chosenFormat,
-            preview:
-              result.chosenFormat === 'blog_post'
-                ? result.generatedContent.title
-                : result.chosenFormat === 'github_repo'
-                ? result.generatedContent.repoName
-                : 'Generated',
+        if (status === 'completed' && hasContent) {
+          try {
+            creditType = await consumeExpansion(userId);
+            logger.info('💳 Credit consumed', {
+              creditType,
+              freeRemaining: usageStatus.freeRemaining - (creditType === 'free' ? 1 : 0),
+              paidRemaining: usageStatus.paidRemaining - (creditType === 'paid' ? 1 : 0),
+            });
+          } catch (error) {
+            logger.error('❌ Failed to consume credit', { error });
+            // Don't fail the whole request if credit consumption fails
+            // Admin can manually adjust later
           }
-        : null,
-      outputId,
-      usage: {
-        creditUsed: creditType,
-        freeRemaining: updatedUsage.freeRemaining,
-        paidRemaining: updatedUsage.paidRemaining,
-        totalRemaining: updatedUsage.freeRemaining + updatedUsage.paidRemaining,
-        totalUsed: updatedUsage.totalUsed,
-      },
-      error: hasErrors ? result.errors.join('; ') : undefined,
+        }
+
+        // SAVE RESULTS
+        await supabaseAdmin
+          .from('executions')
+          .update({
+            selected_idea_id: result.selectedIdea?.id || null,
+            format_chosen: result.chosenFormat,
+            format_reasoning: result.formatReasoning,
+            status,
+            error_message: result.errors.join('; ') || null,
+            duration_seconds: durationSeconds,
+            completed_at: endTime.toISOString(),
+          })
+          .eq('id', executionId);
+
+        // If content was generated, save it
+        let outputId: string | null = null;
+        if (result.generatedContent && result.selectedIdea) {
+          outputId = crypto.randomUUID();
+
+          const { data: outputData, error: outputError } = await supabaseAdmin
+            .from('outputs')
+            .insert({
+              id: outputId,
+              execution_id: executionId,
+              user_id: userId,
+              idea_id: result.selectedIdea.id,
+              format: result.chosenFormat!,
+              content: result.generatedContent,
+              published: false,
+            })
+            .select()
+            .single();
+
+          if (outputError) {
+            logger.error('❌ Failed to save output', { error: outputError });
+          } else {
+            logger.info('💾 Output saved', {
+              outputId,
+              format: result.chosenFormat,
+              ideaId: result.selectedIdea.id,
+            });
+          }
+
+          // Mark idea as expanded
+          await supabaseAdmin
+            .from('ideas')
+            .update({ status: 'expanded' })
+            .eq('id', result.selectedIdea.id);
+        }
+
+        // LOG COMPLETION
+        logger.info('✅ Expansion complete', {
+          status,
+          selectedIdea: result.selectedIdea?.title,
+          chosenFormat: result.chosenFormat,
+          durationSeconds,
+          outputId,
+          creditType,
+        });
+      })
+      .catch((error) => {
+        // Handle pipeline errors
+        logger.error('❌ Pipeline failed', { error: error.message });
+
+        // Update execution with error
+        supabaseAdmin
+          .from('executions')
+          .update({
+            status: 'failed',
+            error_message: error.message || 'Pipeline execution failed',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', executionId);
+      });
+
+    // 7. RETURN IMMEDIATELY with execution ID
+    // Client will poll /api/expand/status to check progress
+    return NextResponse.json({
+      success: true,
+      executionId,
+      status: 'queued',
+      message: 'Expansion started. Poll /api/expand/status?executionId=XXX to check progress.',
+      durationSoFar: 0,
     });
   } catch (error: any) {
     console.error('❌ Expansion failed:', error);
