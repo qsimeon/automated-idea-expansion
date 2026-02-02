@@ -86,16 +86,37 @@ export async function reviewCode(
   try {
     const result = await structuredModel.invoke(prompt);
 
+    // Ensure all fields are present (schema defaults handle this, but normalize for safety)
+    const normalizedReview: CodeReview = {
+      hasErrors: result.hasErrors ?? false,
+      issues: result.issues ?? [],
+      overallScore: result.overallScore ?? 0,
+      recommendation: result.recommendation ?? 'revise',
+      strengths: result.strengths ?? [],
+      weaknesses: result.weaknesses ?? [],
+      securityConcerns: result.securityConcerns ?? [],
+      categoryScores: result.categoryScores ?? {
+        correctness: 0,
+        security: 0,
+        codeQuality: 0,
+        completeness: 0,
+        documentation: 0,
+      },
+      filePriority: result.filePriority ?? [],
+      fixSuggestions: result.fixSuggestions ?? [],
+    };
+
     logger.info('Code review complete', {
-      overallScore: result.overallScore,
-      categoryScores: result.categoryScores,
-      issuesCount: result.issues.length,
-      fixSuggestionsCount: result.fixSuggestions?.length || 0,
-      recommendation: result.recommendation,
+      overallScore: normalizedReview.overallScore,
+      categoryScores: normalizedReview.categoryScores,
+      issuesCount: normalizedReview.issues.length,
+      fixSuggestionsCount: normalizedReview.fixSuggestions.length,
+      filePriorityCount: normalizedReview.filePriority.length,
+      recommendation: normalizedReview.recommendation,
     });
 
     return {
-      review: result,
+      review: normalizedReview,
     };
   } catch (error) {
     logger.error('Critic agent failed', {

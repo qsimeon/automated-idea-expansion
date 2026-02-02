@@ -19,7 +19,9 @@ const ModuleFileSchema = z.object({
 });
 
 const MultipleFilesSchema = z.object({
-  files: z.array(ModuleFileSchema).describe('List of Python files to create'),
+  files: z.array(ModuleFileSchema)
+    .min(1, 'Must generate at least 1 Python file')
+    .describe('List of Python files to create (MUST include at least 1 file)'),
 });
 
 /**
@@ -578,18 +580,50 @@ RESPONSE FORMAT - YOU MUST RETURN EXACTLY THIS STRUCTURE:
 
 CRITICAL: Return exactly ${filePathsToCreate.length} files with the paths listed above.`;
 
-  const result = await structuredModel.invoke(prompt);
+  // Retry logic with exponential backoff
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  // Convert to CodeFile format
-  const codeFiles: CodeFile[] = result.files.map((f: any) => ({
-    path: f.path,
-    content: f.content,
-    language: 'python',
-  }));
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`   📝 Module generation attempt ${attempt}/${maxRetries}...`);
+      const result = await structuredModel.invoke(prompt);
 
-  console.log(`   ✅ Generated ${codeFiles.length}/${filePathsToCreate.length} critical module(s)`);
+      // Validate result
+      if (!result.files || result.files.length === 0) {
+        throw new Error(`LLM returned empty files array. Expected ${filePathsToCreate.length} files.`);
+      }
 
-  return codeFiles;
+      // Validate file count matches requirements
+      if (result.files.length < filePathsToCreate.length) {
+        console.warn(`⚠️ Generated fewer files than expected: ${result.files.length}/${filePathsToCreate.length}`);
+      }
+
+      // Convert to CodeFile format
+      const codeFiles: CodeFile[] = result.files.map((f: any) => ({
+        path: f.path,
+        content: f.content,
+        language: 'python',
+      }));
+
+      console.log(`   ✅ Generated ${codeFiles.length}/${filePathsToCreate.length} critical module(s)`);
+      return codeFiles;
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`   ❌ Module generation attempt ${attempt} failed:`, lastError.message);
+
+      if (attempt < maxRetries) {
+        const delayMs = 1000 * attempt; // 1s, 2s, 3s
+        console.log(`   🔄 Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  // All retries failed
+  console.error(`   ❌ Critical module generation failed after ${maxRetries} attempts`);
+  throw new Error(`Failed to generate critical modules after ${maxRetries} attempts. Last error: ${lastError?.message}`);
 }
 
 /**

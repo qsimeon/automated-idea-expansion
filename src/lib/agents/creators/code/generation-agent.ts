@@ -62,7 +62,9 @@ const MultipleFilesSchema = z.object({
   files: z.array(z.object({
     path: z.string().describe('File path (e.g., "utils.py", "api.js")'),
     content: z.string().describe('Complete, working code for this file'),
-  })).describe('List of code files to create').default([]),
+  }))
+    .min(1, 'Must generate at least 1 file')
+    .describe('List of code files to create (MUST include at least 1 file)'),
 });
 
 type CLIAppOutput = z.infer<typeof CLIAppSchema>;
@@ -563,14 +565,172 @@ OUTPUT STRUCTURE:
 }
 
 /**
- * WEB APP GENERATOR (Simplified - generates a basic demo)
+ * WEB APP GENERATOR - Creates Python Flask/FastAPI web applications
+ *
+ * Always generates Python web apps (Flask or FastAPI) instead of Node/React
+ * to ensure compatibility and quality.
  */
 async function generateWebApp(
   plan: CodePlan,
   idea: { title: string; description: string | null }
 ): Promise<{ code: GeneratedCode }> {
-  // For now, delegate to demo script with HTML
-  return generateDemoScript(plan, idea);
+  const logger = createLogger({ stage: 'generation-agent' });
+
+  // Force Python for web apps
+  const pythonPlan: CodePlan = {
+    ...plan,
+    language: 'python',
+    framework: plan.framework || 'flask', // Default to Flask if no framework specified
+  };
+
+  // PHASE 1: Generate library modules if modular
+  let moduleFiles: CodeFile[] = [];
+  let moduleContext: ModuleContext[] = [];
+
+  if (pythonPlan.architecture === 'modular') {
+    logger.info('PHASE 1: Generating library modules for modular web app');
+    const result = await generateLibraryModules(idea, pythonPlan, 'python');
+    moduleFiles = result.files;
+    moduleContext = result.moduleContext;
+  }
+
+  // PHASE 2: Generate main Flask/FastAPI app
+  const model = selectGenerationModel(pythonPlan);
+  const structuredModel = model.withStructuredOutput(DemoScriptSchema);
+
+  const framework = pythonPlan.framework || 'flask';
+  const mainFile = 'app.py';
+
+  const moduleContextSection = formatModuleContextForPrompt(moduleContext, 'web-app');
+
+  const prompt = `Create a WORKING Python web application using ${framework.toUpperCase()} that implements: ${idea.title}
+
+Description: ${idea.description || 'No additional description'}
+
+${moduleContextSection}
+
+Requirements:
+- Framework: ${framework === 'fastapi' ? 'FastAPI' : 'Flask'}
+- Create a fully working, production-ready web application
+- Include clear routing with meaningful endpoints
+- ${framework === 'fastapi' ? 'Use FastAPI with Uvicorn, include Pydantic models for validation' : 'Use Flask with proper error handling'}
+- Add appropriate error handling and status codes
+- Include docstrings for all functions
+- Make it RUNNABLE as-is with proper dependencies
+
+CRITICAL: The code MUST:
+1. Actually RUN without errors (tested with \`${framework === 'fastapi' ? 'uvicorn app:app --reload' : 'python app.py'}\`)
+2. Be production-quality with proper error handling
+3. Follow Python best practices and PEP 8
+4. Include all necessary imports
+5. Have clear, well-organized code structure
+6. Include at least 2-3 meaningful endpoints/routes
+
+Provide COMPLETE, TESTED-QUALITY code for ${mainFile}.
+
+OUTPUT STRUCTURE:
+- code: Complete working code as a single string
+- requiredPackages: Array of packages (e.g., ["flask", "python-dotenv"] or ["fastapi", "uvicorn"])`;
+
+  try {
+    const result = await structuredModel.invoke(prompt);
+
+    if (!result?.code || result.code.trim().length === 0) {
+      logger.warn('No code generated for web app, using demo fallback');
+      return generateDemoScript(plan, idea);
+    }
+
+    // Generate repo name
+    const repoName = await generateRepoName(idea, pythonPlan);
+
+    // Create files
+    const files: CodeFile[] = [
+      ...moduleFiles,
+      {
+        path: mainFile,
+        content: result.code,
+        language: 'python',
+      },
+    ];
+
+    // Generate README
+    const readme = await generateReadme({
+      ideaString: idea.title + (idea.description ? ': ' + idea.description : ''),
+      plan: pythonPlan,
+      files,
+      language: 'python',
+      setupInstructions: 'pip install -r requirements.txt',
+      runInstructions: framework === 'fastapi'
+        ? 'uvicorn app:app --reload'
+        : 'python app.py',
+    });
+
+    if (readme) {
+      files.push({
+        path: 'README.md',
+        content: readme,
+      });
+    }
+
+    // Aggregate dependencies
+    let allDependencies = result?.requiredPackages || [];
+
+    if (pythonPlan.architecture === 'modular') {
+      try {
+        const aggregatedDeps = await aggregateAllDependencies(files, 'python');
+        if (aggregatedDeps.length > 0) {
+          allDependencies = aggregatedDeps;
+        }
+      } catch (error) {
+        logger.warn('Failed to aggregate dependencies, using main file deps only');
+      }
+    }
+
+    if (allDependencies.length > 0) {
+      files.push({
+        path: 'requirements.txt',
+        content: allDependencies.join('\n'),
+      });
+    }
+
+    // Add .env.example for configuration
+    files.push({
+      path: '.env.example',
+      content: `# ${idea.title} Environment Configuration\nDEBUG=True\nFLASK_ENV=development\n`,
+    });
+
+    // Validate file count
+    validateFileCount(files, pythonPlan);
+
+    logger.info('Generated Python web app successfully', {
+      framework,
+      filesCount: files.length,
+      architecture: pythonPlan.architecture,
+    });
+
+    return {
+      code: {
+        repoName,
+        description: idea.description || idea.title,
+        files,
+        dependencies: {
+          runtime: ['python'],
+          packages: allDependencies,
+        },
+        setupInstructions: 'pip install -r requirements.txt',
+        runInstructions: framework === 'fastapi'
+          ? 'uvicorn app:app --reload'
+          : 'python app.py',
+        type: 'python',
+        outputType: 'web-app',
+      },
+    };
+  } catch (error) {
+    logger.error('Failed to generate web app', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 /**

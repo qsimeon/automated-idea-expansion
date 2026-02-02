@@ -182,34 +182,34 @@ export const CodeReviewSchema = z.object({
   overallScore: z.number().min(0).max(100).describe('Quality score 0-100'),
   recommendation: z.enum(['approve', 'revise', 'regenerate']),
 
-  // Detailed feedback
+  // Detailed feedback - always required
   strengths: z.array(z.string()).describe("What's good about the code"),
   weaknesses: z.array(z.string()).describe('What needs improvement'),
   securityConcerns: z.array(z.string()).describe('Any security issues'),
 
-  // Scores by rubric category
+  // Scores by rubric category - always required
   categoryScores: z.object({
-    correctness: z.number().describe('0-100'),
-    security: z.number().describe('0-100'),
-    codeQuality: z.number().describe('0-100'),
-    completeness: z.number().describe('0-100'),
-    documentation: z.number().describe('0-100 (README and code documentation quality)'),
-  }).optional(),
+    correctness: z.number().min(0).max(100).describe('Code correctness: 0-100'),
+    security: z.number().min(0).max(100).describe('Security practices: 0-100'),
+    codeQuality: z.number().min(0).max(100).describe('Code quality & readability: 0-100'),
+    completeness: z.number().min(0).max(100).describe('Completeness vs plan: 0-100'),
+    documentation: z.number().min(0).max(100).describe('README and code documentation: 0-100'),
+  }).describe('Quality scores across 5 dimensions'),
 
-  // Files prioritized for fixing
+  // Files prioritized for fixing - always present (empty array if none)
   filePriority: z.array(z.object({
-    file: z.string(),
-    priority: z.enum(['high', 'medium', 'low']),
-    reason: z.string(),
-  })).optional(),
+    file: z.string().describe('File path'),
+    priority: z.enum(['high', 'medium', 'low']).describe('Fix priority'),
+    reason: z.string().describe('Why this file needs fixing'),
+  })).describe('Files prioritized for fixing (empty if none needed)').default([]),
 
-  // Specific, actionable fix suggestions
+  // Specific, actionable fix suggestions - always present (empty array if none)
   fixSuggestions: z.array(z.object({
-    file: z.string(),
-    issue: z.string(),
+    file: z.string().describe('File path'),
+    issue: z.string().describe('What the issue is'),
     suggestedFix: z.string().describe('Detailed, implementable fix instruction'),
-    priority: z.enum(['critical', 'important', 'minor']),
-  })).optional(),
+    priority: z.enum(['critical', 'important', 'minor']).describe('Fix priority'),
+  })).describe('Fix suggestions (empty if no fixes needed)').default([]),
 });
 
 export type CodeReview = z.infer<typeof CodeReviewSchema>;
